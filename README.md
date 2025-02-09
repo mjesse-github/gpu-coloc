@@ -1,1 +1,1 @@
-# metabolite-coloc
+# Code for metabolite colocalization used in UK biobank and biomarkers study.
