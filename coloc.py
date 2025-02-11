@@ -1,3 +1,4 @@
+import argparse
 import math
 import os
 import torch
@@ -281,71 +282,76 @@ def coloc_loop(
 
     return final_df
 
-if __name__ == "__main__":
-    for root, dirs, files in os.walk("met_p"):
-        for directory in tqdm(dirs, desc="chromosomes"):
-            # print(f"Currently running chrom {directory}")
-            dir_path = os.path.join(root, directory)
-            met_files = os.listdir(dir_path)
+parser = argparse.ArgumentParser(description="Run coloc")
 
-            ge_dir_path = os.path.join("p", directory)
-            files = os.listdir(ge_dir_path)
+parser.add_argument("--dir1", type=str, required=True, help="First directory of directories of parquet files, e.g., 'formatted_eqtls'.")
+parser.add_argument("--dir2", type=str, required=True, help="Second directory of directories of parquet files, e.g., 'formatted_metabolites'.")
+parser.add_argument("--results", type=str, required=True, help="File to write the colocalization results, e.g., 'results.tsv'.")
 
-            combination = []
+args = parser.parse_args()
 
-            met_cache = {}
-            ge_cache = {}
+for root, dirs, files in os.walk(args.dir1):
+    for directory in tqdm(dirs, desc="chromosomes"):
+        # print(f"Currently running chrom {directory}")
+        dir_path = os.path.join(root, directory)
+        met_files = os.listdir(dir_path)
 
-            for i in range(len(met_files)):
-                met_cache[i] = pd.read_parquet(f"{dir_path}/{met_files[i]}")
+        ge_dir_path = os.path.join(args.dir2, directory)
+        files = os.listdir(ge_dir_path)
 
-            for i in range(len(files)):
-                ge_cache[i] = pd.read_parquet(f"{ge_dir_path}/{files[i]}")
+        combination = []
 
-            for i in tqdm(range(len(met_files)), desc="processing met", leave=False):
-                # input1 = pd.read_parquet(f"{dir_path}/{met_files[i]}")
-                input1 = met_cache[i]
-                metadata1 = input1.iloc[:, :6].copy()  
-                mat1 = input1.iloc[:, 6:].copy()
+        met_cache = {}
+        ge_cache = {}
 
-                min_pos_1 = metadata1['location_min'].min()
-                max_pos_1 = metadata1['location_max'].max()
+        for i in range(len(met_files)):
+            met_cache[i] = pd.read_parquet(f"{dir_path}/{met_files[i]}")
 
-                for j in tqdm(range(len(files)), desc="running files", leave=False):
-                    # input2 = pd.read_parquet(f"{ge_dir_path}/{files[j]}")
-                    input2 = ge_cache[j]
-                    metadata2 = input2.iloc[:, :6].copy()  
-                    mat2 = input2.iloc[:, 6:].copy()
+        for i in range(len(files)):
+            ge_cache[i] = pd.read_parquet(f"{ge_dir_path}/{files[i]}")
 
-                    min_pos_2 = metadata2['location_min'].min()
-                    max_pos_2 = metadata2['location_max'].max()
+        for i in tqdm(range(len(met_files)), desc="processing met", leave=False):
+            # input1 = pd.read_parquet(f"{dir_path}/{met_files[i]}")
+            input1 = met_cache[i]
+            metadata1 = input1.iloc[:, :6].copy()  
+            mat1 = input1.iloc[:, 6:].copy()
 
-                    if max_pos_1 < min_pos_2 or max_pos_2 < min_pos_1:
-                        continue
+            min_pos_1 = metadata1['location_min'].min()
+            max_pos_1 = metadata1['location_max'].max()
 
-                    device = torch.device("cuda")
+            for j in tqdm(range(len(files)), desc="running files", leave=False):
+                # input2 = pd.read_parquet(f"{ge_dir_path}/{files[j]}")
+                input2 = ge_cache[j]
+                metadata2 = input2.iloc[:, :6].copy()  
+                mat2 = input2.iloc[:, 6:].copy()
 
-                    # device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+                min_pos_2 = metadata2['location_min'].min()
+                max_pos_2 = metadata2['location_max'].max()
 
-                    final_results = coloc_loop(
-                        mat1=mat1,
-                        mat2=mat2,
-                        metadata1=metadata1,
-                        metadata2=metadata2,
-                        num_chunks1=math.ceil(mat1.shape[0]/100),
-                        num_chunks2=math.ceil(mat2.shape[0]/100),
-                        device=device,
-                        p1=1e-4,
-                        p2=1e-4,
-                        p12=1e-6,
-                    )
-                    
-                    output_file="coloc_results.tsv"
+                if max_pos_1 < min_pos_2 or max_pos_2 < min_pos_1:
+                    continue
 
-                    if final_results is None or final_results.empty:
-                        continue
+                device = torch.device("cuda" if torch.backends.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
-                    if not os.path.exists(output_file):
-                        final_results.to_csv(output_file, sep="\t", index=False, mode='w', header=True)
-                    else:
-                        final_results.to_csv(output_file, sep="\t", index=False, mode='a', header=False)
+                final_results = coloc_loop(
+                    mat1=mat1,
+                    mat2=mat2,
+                    metadata1=metadata1,
+                    metadata2=metadata2,
+                    num_chunks1=math.ceil(mat1.shape[0]/100),
+                    num_chunks2=math.ceil(mat2.shape[0]/100),
+                    device=device,
+                    p1=1e-4,
+                    p2=1e-4,
+                    p12=1e-6,
+                )
+                
+                output_file=args.results
+
+                if final_results is None or final_results.empty:
+                    continue
+
+                if not os.path.exists(output_file):
+                    final_results.to_csv(output_file, sep="\t", index=False, mode='w', header=True)
+                else:
+                    final_results.to_csv(output_file, sep="\t", index=False, mode='a', header=False)

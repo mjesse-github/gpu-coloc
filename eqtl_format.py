@@ -1,12 +1,22 @@
+import argparse
 import os
 import math
 import pandas as pd
 from tqdm import tqdm
 
-metadata = pd.read_csv("metadata.tsv", sep="\t")
+parser = argparse.ArgumentParser(description="Create files and summary for signals")
 
-parquet_dir = "p"
-mat_dir = "mat"
+parser.add_argument("--input_dir", type=str, required=True, help="Directory where are signal files, e.g., 'eqtl_signals'.")
+parser.add_argument("--output_dir", type=str, required=True, help="Directory where to save formatted matrixes, e.g., 'formatted_eqtls'.")
+parser.add_argument("--summary", type=str, required=True, help="Path to the summary eQTL summary file, e.g., 'eqtl_summary.tsv'.")
+parser.add_argument("--files_summary", type=str, help="Path, e.g., 'parquet_summary.tsv'.")
+
+args = parser.parse_args()
+
+metadata = pd.read_csv(args.summary, sep="\t")
+
+parquet_dir = args.output_dir
+mat_dir = args.output_dir
 
 os.makedirs(parquet_dir, exist_ok=True)
 
@@ -31,7 +41,7 @@ for chrom in tqdm(chromosomes, desc="Processing chromosomes"):
 
     signals = meta_sub.index.tolist()
     total_signals = len(signals)
-    print(f"Chrom {chrom}: {total_signals} signals pass filter.")
+    # print(f"Chrom {chrom}: {total_signals} signals pass filter.")
 
     chunk_size = 1000
     n_groups = math.ceil(total_signals / chunk_size)
@@ -41,7 +51,7 @@ for chrom in tqdm(chromosomes, desc="Processing chromosomes"):
         end_idx = min(start_idx + chunk_size, total_signals)
         group_signals = signals[start_idx:end_idx]
 
-        print(f"  Group {group_i+1}/{n_groups}, signals {start_idx}..{end_idx-1}")
+        # print(f"  Group {group_i+1}/{n_groups}, signals {start_idx}..{end_idx-1}")
 
         meta_group = meta_sub.loc[group_signals].copy()
         mat_files = [f"{mat_dir}/{sig}.pickle" for sig in group_signals]
@@ -55,7 +65,7 @@ for chrom in tqdm(chromosomes, desc="Processing chromosomes"):
             snp_set.update(df_tmp.columns.tolist())
             del df_tmp
 
-        print(f"    => {len(snp_set)} unique SNPs in group {group_i+1}")
+        # print(f"    => {len(snp_set)} unique SNPs in group {group_i+1}")
 
         columns = list(meta_group.columns) + sorted(snp_set)
         combined_df = pd.DataFrame(index=meta_group.index, columns=columns)
@@ -99,7 +109,8 @@ for chrom in tqdm(chromosomes, desc="Processing chromosomes"):
             "parquet_file": parquet_path
         })
 
-df_parquet_meta = pd.DataFrame(parquet_records)
-df_parquet_meta.to_csv("parquet_metadata.tsv", sep="\t", index=False)
+if args.files_summary:
+    df_parquet_meta = pd.DataFrame(parquet_records)
+    df_parquet_meta.to_csv(args.files_summary, sep="\t", index=False)
 
 print("Done.")
