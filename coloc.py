@@ -67,30 +67,22 @@ def coloc_bf_bf_torch(
 
     pp_H4_2d = pp_abf_3d[4]  
 
-    hit1_idx = torch.argmax(bf1_arr, dim=1)  
-    hit2_idx = torch.argmax(bf2_arr, dim=1) 
 
     i_coords = torch.arange(N, device=device).unsqueeze(1).expand(N, K).flatten() 
     j_coords = torch.arange(K, device=device).unsqueeze(0).expand(N, K).flatten() 
 
     pp_H4_flat        = pp_H4_2d.flatten()
-    repeated_hit1_idx = hit1_idx[i_coords]
-    repeated_hit2_idx = hit2_idx[j_coords]
 
     i_coords_cpu    = i_coords.cpu().numpy()
     j_coords_cpu    = j_coords.cpu().numpy()
     pp_H4_cpu       = pp_H4_flat.cpu().numpy()
-    # h1_idx_cpu      = repeated_hit1_idx.cpu().numpy()
-    # h2_idx_cpu      = repeated_hit2_idx.cpu().numpy()
 
     summary_df = pd.DataFrame({
         "idx1": i_coords_cpu,
         "idx2": j_coords_cpu,
         "PP.H4": pp_H4_cpu,
-        # "hit1": [None]*len(i_coords_cpu), 
-        # "hit2": [None]*len(i_coords_cpu)   
+
     })
-    # summary_df["nsnps"] = len(isnps)
 
     return {
         "summary": summary_df,
@@ -174,11 +166,13 @@ def coloc_loop(
     device="cuda",
     p1=1e-4, p2=1e-4, p12=1e-6
 ):
+    print("coloc")
     
     try:
         overlapping_pairs = trim(mat1, mat2)
         valid_pairs = set(overlapping_pairs[["i", "j"]].itertuples(index=False, name=None))
     except:
+        print("no pairs")
         return pd.DataFrame()
 
     if overlapping_pairs.empty:
@@ -262,14 +256,7 @@ def coloc_loop(
             summary_df["idx2"]
         ].values
 
-
         summary_df = summary_df[summary_df["signal1"] != summary_df["signal2"]].reset_index(drop=True)
-
-        summary_df[["signal1", "signal2"]] = summary_df[["signal1", "signal2"]].apply(
-            lambda x: sorted(x), axis=1, result_type="expand"
-        )
-
-        summary_df = summary_df.drop_duplicates(subset=["signal1", "signal2"]).reset_index(drop=True)
 
         summary_df.drop(columns=["idx1", "idx2"], inplace=True)
 
@@ -290,9 +277,15 @@ parser.add_argument("--results", type=str, required=True, help="File to write th
 
 args = parser.parse_args()
 
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
+
 for root, dirs, files in os.walk(args.dir1):
     for directory in tqdm(dirs, desc="chromosomes"):
-        # print(f"Currently running chrom {directory}")
         dir_path = os.path.join(root, directory)
         met_files = os.listdir(dir_path)
 
@@ -311,7 +304,6 @@ for root, dirs, files in os.walk(args.dir1):
             ge_cache[i] = pd.read_parquet(f"{ge_dir_path}/{files[i]}")
 
         for i in tqdm(range(len(met_files)), desc="processing met", leave=False):
-            # input1 = pd.read_parquet(f"{dir_path}/{met_files[i]}")
             input1 = met_cache[i]
             metadata1 = input1.iloc[:, :6].copy()  
             mat1 = input1.iloc[:, 6:].copy()
@@ -320,7 +312,6 @@ for root, dirs, files in os.walk(args.dir1):
             max_pos_1 = metadata1['location_max'].max()
 
             for j in tqdm(range(len(files)), desc="running files", leave=False):
-                # input2 = pd.read_parquet(f"{ge_dir_path}/{files[j]}")
                 input2 = ge_cache[j]
                 metadata2 = input2.iloc[:, :6].copy()  
                 mat2 = input2.iloc[:, 6:].copy()
@@ -330,8 +321,6 @@ for root, dirs, files in os.walk(args.dir1):
 
                 if max_pos_1 < min_pos_2 or max_pos_2 < min_pos_1:
                     continue
-
-                device = torch.device("cuda" if torch.backends.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
                 final_results = coloc_loop(
                     mat1=mat1,
