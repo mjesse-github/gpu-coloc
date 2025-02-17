@@ -1,5 +1,0 @@
-chromosome	group	n_signals	min_position	max_position	parquet_file
-1	0	1	14326873	15326873	example/formatted_gwas/1/chr1_met_group_0_region_14326873-15326873.parquet
-1	1	1	75933270	76933270	example/formatted_gwas/1/chr1_met_group_1_region_75933270-76933270.parquet
-1	2	1	85017720	86017720	example/formatted_gwas/1/chr1_met_group_2_region_85017720-86017720.parquet
-1	3	1	218088339	219088339	example/formatted_gwas/1/chr1_met_group_3_region_218088339-219088339.parquet
