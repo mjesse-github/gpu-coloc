@@ -130,10 +130,7 @@ def trim(bf1, bf2, p1=1e-4, p2=1e-4, overlap_min=0.5, silent=True):
     if isinstance(bf2, pd.Series):
         bf2 = bf2.to_frame().T
 
-    print("siin")
-
     isnps = list(set(bf1.columns).intersection(set(bf2.columns)).difference(['null']))
-    print("isnps", isnps)
 
     if not isnps:
         if not silent:
@@ -177,7 +174,6 @@ def coloc_loop(
         overlapping_pairs = trim(mat1, mat2)
         valid_pairs = set(overlapping_pairs[["i", "j"]].itertuples(index=False, name=None))
     except:
-        print("no pairs")
         return pd.DataFrame()
 
     if overlapping_pairs.empty:
