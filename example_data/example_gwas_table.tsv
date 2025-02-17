@@ -1,2 +1,2 @@
-GWAS	leads	GWAS_path	chr_col	pos_col	maf_col	beta_col	se_col	file_type	ref_col	alt_col
-GCST90450224	example_data/example_leads.tsv	example_data/GCST90450224.tsv	chromosome	base_pair_location	effect_allele_frequency	beta	standard_error	tsv	other_allele	effect_allele
+GWAS	leads	GWAS_path	chr_col	pos_col	beta_col	se_col	file_type	ref_col	alt_col
+L_HDL_C_pct	example_data/test_lead.tsv	example_data/gwas_test.tsv	CHROM	GENPOS	Effect	StdErr	tsv	ALLELE0	ALLELE1

@@ -34,9 +34,6 @@ def process_signal(group, directory_name, trait_id, mat_dir, lbf_column, lbf_ind
         
     chromosome = df_filtered['chromosome'].astype(str).iloc[0]
 
-    if chromosome != "1":
-        return
-
     location_min = df_filtered['position'].min()
     location_max = df_filtered['position'].max()
 
@@ -73,9 +70,7 @@ args = parser.parse_args()
 
 metadata = pd.read_csv(args.input_table, sep='\t')
 
-# Process each file
 for row in tqdm(metadata.itertuples(index=False), desc="Processing files"):
-    dataset_id = row.id  # Dataset ID, e.g., QTD1
-    file_path = row.path  # File path
-
+    dataset_id = row.id 
+    file_path = row.path  
     process_gwas_file(file_path, dataset_id, args.output, args.summary)

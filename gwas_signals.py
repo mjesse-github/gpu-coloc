@@ -66,7 +66,7 @@ for gwas in tqdm(input_table.itertuples(index=False), desc=f"Processing GWAS's")
 
         region_signal = region_gwas[(region_gwas[gwas.pos_col] >= region_start) & (region_gwas[gwas.pos_col] <= region_end)]
 
-        region_signal = region_signal[region_signal[gwas.maf_col] >= 0.01]
+        # region_signal = region_signal[region_signal[gwas.maf_col] >= 0.01]
         # if filter_maf:
         #     region_signal.loc[:, "MAF"] = np.minimum(
         #         region_signal["AC"] / (2 * region_signal["N"]),

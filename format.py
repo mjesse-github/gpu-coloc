@@ -20,7 +20,6 @@ def process_group(meta_group, index, chrom, chrom_dir, group_id=None):
         snp_set.update(df_tmp.columns.tolist())
         del df_tmp
 
-    # Build combined DataFrame with meta columns + SNP columns.
     columns = list(meta_group.columns) + sorted(snp_set)
     combined_df = pd.DataFrame(index=meta_group.index, columns=columns)
     for col in meta_group.columns:
@@ -30,7 +29,6 @@ def process_group(meta_group, index, chrom, chrom_dir, group_id=None):
     combined_array = combined_df.to_numpy()
     snp_columns = {snp: idx for idx, snp in enumerate(combined_df.columns[len(meta_group.columns):], start=len(meta_group.columns))}
 
-    # Update SNP values from each pickle file.
     for mat_file in mat_files:
         signal_name = os.path.splitext(os.path.basename(mat_file))[0]
         df_mat = pd.read_pickle(mat_file)
@@ -43,7 +41,6 @@ def process_group(meta_group, index, chrom, chrom_dir, group_id=None):
     combined_df = pd.DataFrame(combined_array, index=combined_df.index, columns=combined_df.columns)
     combined_df.reset_index(inplace=True)
     
-    # Name file by group id if provided.
     if group_id is not None:
         parquet_filename = f"chr{chrom}_group_{group_id}.parquet"
     else:
@@ -63,11 +60,9 @@ def process_group(meta_group, index, chrom, chrom_dir, group_id=None):
     return index + 1
 
 def create_parquet(meta_sub, index, chrom, chrom_dir):
-    # Sort by location to enable gap detection.
     meta_sub.sort_values(by="location_min", inplace=True)
     positions = meta_sub["location_min"].tolist()
 
-    # If at least two signals, check for a gap > 500,000.
     if len(positions) >= 2:
         positions_sorted = sorted(positions)
         max_gap, i1, j1 = 0, 0, 0
@@ -84,7 +79,6 @@ def create_parquet(meta_sub, index, chrom, chrom_dir):
             index = create_parquet(df_part2, index, chrom, chrom_dir)
             return index
 
-    # If no big gap but more than 1000 signals, split into chunks.
     if len(meta_sub) > 1000:
         signals = meta_sub.index.tolist()
         total = len(signals)
@@ -97,7 +91,6 @@ def create_parquet(meta_sub, index, chrom, chrom_dir):
             index = process_group(meta_group, index, chrom, chrom_dir, group_id=group_i+1)
         return index
 
-    # Otherwise, process the group as is.
     index = process_group(meta_sub, index, chrom, chrom_dir)
     return index
 

@@ -65,23 +65,26 @@ def coloc_bf_bf_torch(
     denom_2d   = torch.logsumexp(all_abf_3d, dim=0)                           
     pp_abf_3d  = torch.exp(all_abf_3d - denom_2d.unsqueeze(0))             
 
+    pp_H3_2d = pp_abf_3d[3]  
     pp_H4_2d = pp_abf_3d[4]  
 
 
     i_coords = torch.arange(N, device=device).unsqueeze(1).expand(N, K).flatten() 
     j_coords = torch.arange(K, device=device).unsqueeze(0).expand(N, K).flatten() 
 
+    pp_H3_flat        = pp_H3_2d.flatten()
     pp_H4_flat        = pp_H4_2d.flatten()
 
     i_coords_cpu    = i_coords.cpu().numpy()
     j_coords_cpu    = j_coords.cpu().numpy()
+    pp_H3_cpu       = pp_H3_flat.cpu().numpy()
     pp_H4_cpu       = pp_H4_flat.cpu().numpy()
 
     summary_df = pd.DataFrame({
         "idx1": i_coords_cpu,
         "idx2": j_coords_cpu,
+        "PP.H3": pp_H3_cpu,
         "PP.H4": pp_H4_cpu,
-
     })
 
     return {
@@ -127,7 +130,10 @@ def trim(bf1, bf2, p1=1e-4, p2=1e-4, overlap_min=0.5, silent=True):
     if isinstance(bf2, pd.Series):
         bf2 = bf2.to_frame().T
 
+    print("siin")
+
     isnps = list(set(bf1.columns).intersection(set(bf2.columns)).difference(['null']))
+    print("isnps", isnps)
 
     if not isnps:
         if not silent:
@@ -166,8 +172,7 @@ def coloc_loop(
     device="cuda",
     p1=1e-4, p2=1e-4, p12=1e-6
 ):
-    print("coloc")
-    
+
     try:
         overlapping_pairs = trim(mat1, mat2)
         valid_pairs = set(overlapping_pairs[["i", "j"]].itertuples(index=False, name=None))
