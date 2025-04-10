@@ -171,7 +171,7 @@ def coloc_loop(
 ):
 
     try:
-        overlapping_pairs = trim(mat1, mat2)
+        overlapping_pairs = trim(mat1, mat2, p12)
         valid_pairs = set(overlapping_pairs[["i", "j"]].itertuples(index=False, name=None))
     except:
         return pd.DataFrame()
@@ -231,7 +231,7 @@ def coloc_loop(
 
         summary_df = out["summary"]
 
-        summary_df = summary_df[summary_df["PP.H4"]>0.8]
+        # summary_df = summary_df[summary_df["PP.H4"]>0.8]
         summary_df.loc[:, "idx1"] = summary_df["idx1"] + pair[0] * 100
         summary_df.loc[:, "idx2"] = summary_df["idx2"] + pair[1] * 100
 
@@ -275,8 +275,11 @@ parser = argparse.ArgumentParser(description="Run coloc")
 parser.add_argument("--dir1", type=str, required=True, help="First directory of directories of parquet files, e.g., 'formatted_eqtls'.")
 parser.add_argument("--dir2", type=str, required=True, help="Second directory of directories of parquet files, e.g., 'formatted_metabolites'.")
 parser.add_argument("--results", type=str, required=True, help="File to write the colocalization results, e.g., 'results.tsv'.")
+parser.add_argument("--p12", type=float, required=True, help="p12 prior, e.g. 1e-6")
 
 args = parser.parse_args()
+
+p12 = args.p12
 
 if torch.cuda.is_available():
     device = torch.device("cuda")
@@ -333,7 +336,7 @@ for root, dirs, files in os.walk(args.dir1):
                     device=device,
                     p1=1e-4,
                     p2=1e-4,
-                    p12=1e-6,
+                    p12=p12,
                 )
                 
                 output_file=args.results

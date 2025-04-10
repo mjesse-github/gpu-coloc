@@ -66,10 +66,10 @@ def create_parquet(meta_sub, index, chrom, chrom_dir):
     if len(positions) >= 2:
         positions_sorted = sorted(positions)
         max_gap, i1, j1 = 0, 0, 0
-        for i in range(len(positions_sorted)-1):
-            gap = positions_sorted[i+1] - positions_sorted[i]
+        for i in range(len(positions_sorted) - 1):
+            gap = positions_sorted[i + 1] - positions_sorted[i]
             if gap > max_gap:
-                max_gap, i1, j1 = gap, i, i+1
+                max_gap, i1, j1 = gap, i, i + 1
         if max_gap > 1_000_000:
             split_point_1 = positions_sorted[i1]
             split_point_2 = positions_sorted[j1]
@@ -84,15 +84,16 @@ def create_parquet(meta_sub, index, chrom, chrom_dir):
         total = len(signals)
         chunk_size = 1000
         n_groups = math.ceil(total / chunk_size)
-        for group_i in range(n_groups):
-            start = group_i * chunk_size
+        for group in range(n_groups):
+            start = group * chunk_size
             end = min(start + chunk_size, total)
             meta_group = meta_sub.loc[signals[start:end]].copy()
-            index = process_group(meta_group, index, chrom, chrom_dir, group_id=group_i+1)
+            index = process_group(meta_group, index, chrom, chrom_dir, group_id=index)
         return index
 
-    index = process_group(meta_sub, index, chrom, chrom_dir)
+    index = process_group(meta_sub, index, chrom, chrom_dir, group_id=index)
     return index
+
 
 def main():
     parser = argparse.ArgumentParser(
