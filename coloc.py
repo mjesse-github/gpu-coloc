@@ -174,6 +174,7 @@ def coloc_loop(
         overlapping_pairs = trim(mat1, mat2, p12)
         valid_pairs = set(overlapping_pairs[["i", "j"]].itertuples(index=False, name=None))
     except:
+        print("Possible error in trim function")
         return pd.DataFrame()
 
     if overlapping_pairs.empty:
@@ -231,7 +232,6 @@ def coloc_loop(
 
         summary_df = out["summary"]
 
-        # summary_df = summary_df[summary_df["PP.H4"]>0.8]
         summary_df.loc[:, "idx1"] = summary_df["idx1"] + pair[0] * 100
         summary_df.loc[:, "idx2"] = summary_df["idx2"] + pair[1] * 100
 
