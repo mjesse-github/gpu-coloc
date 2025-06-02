@@ -16,10 +16,18 @@ git clone https://github.com/mjesse-github/gpu-coloc
 
 ### Dependencies
 
-Install required Python libraries:
+Install required Python libraries locally:
 
 ```bash
 pip install -r requirements.txt
+```
+
+Or create a virtual environment using:
+
+```bash
+python3 -m venv coloc_env
+source coloc_env/bin/activate
+pip3 install -r requirements.txt
 ```
 
 For Linux x64 servers, we recommend using our Singularity container:
