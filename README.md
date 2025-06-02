@@ -1,9 +1,74 @@
-# Heres a brief summary how to use gpu-coloc
+# gpu-coloc
 
-For example first seperate GWAS into signals: python3 gwas_signals.py --summary example/gwas_summary.tsv --output example/gwas_signals --input_table example_data/example_gwas_table.tsv
-Next seperate eQTLs into signals: python3 eqtl_signals.py --summary example/eqtl_summary.tsv --output example/eqtl_signals --input_table example_data/example_eqtl_table.tsv
+**gpu-coloc** is a GPU-accelerated implementation of the Bayesian colocalization algorithm (COLOC), providing identical results to R's coloc.bf\_bf at approximately 1000x greater speed.
 
-Now format GWASes: python3 format.py --input example/gwas_signals --output example/formatted_gwas --input_summary example/gwas_summary.tsv --output_summary example/gwas_files_summary.tsv
-Now format eQTLs: python3 format.py --input example/eqtl_signals --output example/formatted_eqtls --input_summary example/eqtl_summary.tsv --output_summary example/eqtl_files_summary.tsv
+## Citation
 
-Run coloc: python3 coloc.py --dir1 example/formatted_eqtls --dir2 example/formatted_gwas --results example/example_results.tsv
+If you use **gpu-coloc**, please cite: *(citation placeholder)*
+
+## Installation
+
+Clone the repository:
+
+```bash
+git clone https://github.com/mjesse-github/gpu-coloc
+```
+
+### Dependencies
+
+Install required Python libraries:
+
+```bash
+pip install -r requirements.txt
+```
+
+For Linux x64 servers, we recommend using our Singularity container:
+*(Singularity link placeholder)*
+
+## Testing Installation
+
+Run:
+
+```bash
+bash test.sh
+```
+
+## Workflow
+
+1. **Prepare Signals and Summary Files**
+
+   * **Signals files**: Each signal should be saved in `[signal].pickle` format, containing variants and their respective log Bayes Factors (lbf).
+
+Example format:
+
+```
+variant	chrX_153412224_C_A	chrX_153412528_C_T	...
+lbf	-0.060991	-1.508802	...
+```
+
+* **Summary file**: Tab-separated file with the structure below:
+
+```
+signal	chromosome	location_min	location_max	signal_strength	lead_variant
+QTD000141_ENSG00000013563_L1	X	153412224	155341332	12.1069377174147	chrX_154403855_T_G
+...
+```
+
+Example naming convention:
+
+* `gwas_summary.tsv`
+* Signals in directory `gwas_signals/[signal].pickle`
+
+Scripts `gwas_signals.py` and `eqtl_signals.py` are provided as examples, but may require adjustments.
+
+1. **Formatting data for colocalization:**
+
+```bash
+python3 format.py --input [path_to_signals] --input_summary [summary_file] --output [output_parquet]
+```
+
+3. **Run colocalization analysis:**
+
+```bash
+python3 coloc.py --dir1 [formatted_dataset_1] --dir2 [formatted_dataset_2] --results [results_output] --p12 1e-6 --H4 0.8
+```

@@ -167,7 +167,7 @@ def coloc_loop(
     num_chunks1=0,
     num_chunks2=0,
     device="cuda",
-    p1=1e-4, p2=1e-4, p12=1e-6
+    p1=1e-4, p2=1e-4, p12=1e-6, H4_threshold=0.8
 ):
 
     try:
@@ -237,6 +237,8 @@ def coloc_loop(
 
         summary_df = summary_df[summary_df.apply(lambda row: (row["idx1"], row["idx2"]) in valid_pairs, axis=1)]
 
+        summary_df = summary_df[summary_df["PP.H4"] >= H4_threshold].reset_index(drop=True)
+
         if summary_df.empty:
             continue
 
@@ -276,10 +278,12 @@ parser.add_argument("--dir1", type=str, required=True, help="First directory of 
 parser.add_argument("--dir2", type=str, required=True, help="Second directory of directories of parquet files, e.g., 'formatted_metabolites'.")
 parser.add_argument("--results", type=str, required=True, help="File to write the colocalization results, e.g., 'results.tsv'.")
 parser.add_argument("--p12", type=float, required=True, help="p12 prior, e.g. 1e-6")
+parser.add_argument("--H4", type=float, required=False, help="Threshold for H4, e.g. 0.8", default=0.8)
 
 args = parser.parse_args()
 
 p12 = args.p12
+H4_threshold = args.H4
 
 if torch.cuda.is_available():
     device = torch.device("cuda")
@@ -337,6 +341,7 @@ for root, dirs, files in os.walk(args.dir1):
                     p1=1e-4,
                     p2=1e-4,
                     p12=p12,
+                    H4_threshold=H4_threshold,
                 )
                 
                 output_file=args.results
