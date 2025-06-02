@@ -63,7 +63,7 @@ Example naming convention:
 * `gwas_summary.tsv`
 * Signals in directory `gwas_signals/[signal].pickle`
 
-Scripts `gwas_signals.py` and `eqtl_signals.py` are provided as examples, but may require adjustments.
+Scripts in `summary_and_signals_examples/` are provided as examples, but may require adjustments.
 
 2. **Format data:**
 
@@ -71,7 +71,7 @@ Scripts `gwas_signals.py` and `eqtl_signals.py` are provided as examples, but ma
 python3 gpu-coloc/format.py --input [path_to_signals] --input_summary [summary_file] --output [output_folder]
 ```
 
-1. **Run colocalization:**
+3. **Run colocalization:**
 
 ```bash
 python3 gpu-coloc/coloc.py --dir1 [formatted_dataset_1] --dir2 [formatted_dataset_2] --results [results_output] --p12 1e-6 --H4 0.8
