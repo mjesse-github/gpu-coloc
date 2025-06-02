@@ -61,7 +61,7 @@ Example naming convention:
 
 Scripts `gwas_signals.py` and `eqtl_signals.py` are provided as examples, but may require adjustments.
 
-1. **Formatting data for colocalization:**
+2. **Formatting data for colocalization:**
 
 ```bash
 python3 format.py --input [path_to_signals] --input_summary [summary_file] --output [output_parquet]
