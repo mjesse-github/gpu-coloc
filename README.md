@@ -39,11 +39,11 @@ Note: The following example assumes gpu-coloc is downloaded into your working di
 
 Variants must follow a uniform naming convention, as the COLOC algorithm requires consistent naming. Use the format: chr[chromosome]_[position]_[ref]_[alt]. Perform any renaming prior to Step 1 below. We use chromosome X, not 23.
 
-1. **Prepare Signals and Summary Files**
+1. **Prepare signals and summary files**
 
    * **Signals files**: Each signal should be saved in `[signal].pickle` format, containing variants and their respective log Bayes Factors (lbf).
 
-Example format:
+Format on which our formatting algorithm works:
 
 ```
 variant	chrX_153412224_C_A	chrX_153412528_C_T	...
@@ -65,15 +65,13 @@ Example naming convention:
 
 Scripts `gwas_signals.py` and `eqtl_signals.py` are provided as examples, but may require adjustments.
 
-2. **Formatting data for colocalization:**
+2. **Format data:**
 
 ```bash
 python3 gpu-coloc/format.py --input [path_to_signals] --input_summary [summary_file] --output [output_folder]
 ```
 
-The formatting algorithm creates a seperate folder for each chromosome into the .parquet file output folder, so it is important to keep in mind that both .parquet folders have the same chromosome naming convention (for chromosome X we use X not 23). Also variants should hold a uniform naming convention, as COLOC algorithm is dependent on this, we use the convention chr[chromosme]_[position]_[ref]_[alt], however renaming should be done before the first step.
-
-3. **Run colocalization analysis:**
+1. **Run colocalization:**
 
 ```bash
 python3 gpu-coloc/coloc.py --dir1 [formatted_dataset_1] --dir2 [formatted_dataset_2] --results [results_output] --p12 1e-6 --H4 0.8
