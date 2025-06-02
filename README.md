@@ -8,7 +8,7 @@ If you use **gpu-coloc**, please cite: *(citation placeholder)*
 
 ## Installation
 
-Clone the repository:
+Clone the repository into the working directory:
 
 ```bash
 git clone https://github.com/mjesse-github/gpu-coloc
@@ -64,11 +64,11 @@ Scripts `gwas_signals.py` and `eqtl_signals.py` are provided as examples, but ma
 1. **Formatting data for colocalization:**
 
 ```bash
-python3 format.py --input [path_to_signals] --input_summary [summary_file] --output [output_parquet]
+python3 gpu-coloc/format.py --input [path_to_signals] --input_summary [summary_file] --output [output_parquet]
 ```
 
 3. **Run colocalization analysis:**
 
 ```bash
-python3 coloc.py --dir1 [formatted_dataset_1] --dir2 [formatted_dataset_2] --results [results_output] --p12 1e-6 --H4 0.8
+python3 gpu-coloc/coloc.py --dir1 [formatted_dataset_1] --dir2 [formatted_dataset_2] --results [results_output] --p12 1e-6 --H4 0.8
 ```
