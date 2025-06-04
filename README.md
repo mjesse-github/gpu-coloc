@@ -1,6 +1,6 @@
 # gpu-coloc
 
-**gpu-coloc** is a GPU-accelerated implementation of the Bayesian colocalization algorithm (COLOC), providing identical results to R's coloc.bf\_bf at approximately 1000x greater speed.
+**gpu-coloc** is a GPU-accelerated Bayesian colocalization implementation (COLOC), delivering identical results to R's `coloc.bf_bf` approximately 1000 times faster.
 
 ## Citation
 
@@ -8,57 +8,42 @@ If you use **gpu-coloc**, please cite: *(citation placeholder)*
 
 ## Installation
 
-Clone the repository:
+Install via pip (Python ≥3.12):
 
 ```bash
-git clone https://github.com/mjesse-github/gpu-coloc
+pip install gpu-coloc
 ```
 
-### Dependencies
+## Verify Installation
 
-Install required Python libraries locally:
-
-```bash
-pip install -r requirements.txt
-```
-
-Or create a virtual environment using:
-
-```bash
-python3 -m venv coloc_env
-source coloc_env/bin/activate
-pip3 install -r requirements.txt
-```
-
-For Linux x64 servers, we recommend using our Singularity container:
-*(Singularity link placeholder)*
-
-## Testing Installation
-
-Run:
+Run the test script:
 
 ```bash
 bash test.sh
 ```
 
+This creates an `example/` directory containing an `example_results.tsv` file.
+
 ## Workflow
 
-Note: The following example assumes gpu-coloc is downloaded into your working directory. Adjust paths accordingly if downloaded elsewhere.
+**Note:** Paths assume gpu-coloc is in the working directory; adjust paths if necessary.
 
-Variants must follow a uniform naming convention, as the COLOC algorithm requires consistent naming. Use the format: chr[chromosome]_[position]_[ref]_[alt]. Perform any renaming prior to Step 1 below. We use chromosome X, not 23.
+### Variant Naming Convention
 
-1. **Prepare signals and summary files**
+Variants must follow the naming format: `chr[chromosome]_[position]_[ref]_[alt]`. Ensure renaming is completed before Step 1. Use chromosome X, not 23.
 
-   * **Signals files**: Each signal should be saved in `[signal].pickle` format, containing variants and their respective log Bayes Factors (lbf).
+### 1. Prepare Signals and Summary Files
 
-Format on which our formatting algorithm works:
+* **Signal Files:** Save signals as `[signal].pickle`, containing variants and their log Bayes Factors (lbf).
+
+Example format:
 
 ```
 variant	chrX_153412224_C_A	chrX_153412528_C_T	...
 lbf	-0.060991	-1.508802	...
 ```
 
-* **Summary file**: Tab-separated file with the structure below:
+* **Summary File:** Tab-separated, structured as:
 
 ```
 signal	chromosome	location_min	location_max	signal_strength	lead_variant
@@ -66,21 +51,21 @@ QTD000141_ENSG00000013563_L1	X	153412224	155341332	12.1069377174147	chrX_1544038
 ...
 ```
 
-Example naming convention:
+Naming examples:
 
-* `gwas_summary.tsv`
-* Signals in directory `gwas_signals/[signal].pickle`
+* Summary: `gwas_summary.tsv`
+* Signals directory: `gwas_signals/[signal].pickle`
 
-Scripts in `summary_and_signals_examples/` are provided as examples, but may require adjustments.
+See scripts in `summary_and_signals_examples/` for reference; modifications may be necessary.
 
-2. **Format data:**
+### 2. Format Data
 
 ```bash
-python3 gpu-coloc/format.py --input [path_to_signals] --input_summary [summary_file] --output [output_folder]
+gpu-coloc --format --input [path_to_signals] --input_summary [summary_file] --output [output_folder]
 ```
 
-3. **Run colocalization:**
+### 3. Run Colocalization
 
 ```bash
-python3 gpu-coloc/coloc.py --dir1 [formatted_dataset_1] --dir2 [formatted_dataset_2] --results [results_output] --p12 1e-6 --H4 0.8
+gpu-coloc coloc.py --run --dir1 [formatted_dataset_1] --dir2 [formatted_dataset_2] --results [results_output] --p12 1e-6 --H4 0.8
 ```
