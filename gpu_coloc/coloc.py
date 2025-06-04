@@ -272,84 +272,88 @@ def coloc_loop(
 
     return final_df
 
-parser = argparse.ArgumentParser(description="Run coloc")
+def main():
+    parser = argparse.ArgumentParser(description="Run coloc")
 
-parser.add_argument("--dir1", type=str, required=True, help="First directory of directories of parquet files, e.g., 'formatted_eqtls'.")
-parser.add_argument("--dir2", type=str, required=True, help="Second directory of directories of parquet files, e.g., 'formatted_metabolites'.")
-parser.add_argument("--results", type=str, required=True, help="File to write the colocalization results, e.g., 'results.tsv'.")
-parser.add_argument("--p12", type=float, required=True, help="p12 prior, e.g. 1e-6")
-parser.add_argument("--H4", type=float, required=False, help="Threshold for H4, e.g. 0.8", default=0.8)
+    parser.add_argument("--dir1", type=str, required=True, help="First directory of directories of parquet files, e.g., 'formatted_eqtls'.")
+    parser.add_argument("--dir2", type=str, required=True, help="Second directory of directories of parquet files, e.g., 'formatted_metabolites'.")
+    parser.add_argument("--results", type=str, required=True, help="File to write the colocalization results, e.g., 'results.tsv'.")
+    parser.add_argument("--p12", type=float, required=True, help="p12 prior, e.g. 1e-6")
+    parser.add_argument("--H4", type=float, required=False, help="Threshold for H4, e.g. 0.8", default=0.8)
 
-args = parser.parse_args()
+    args = parser.parse_args()
 
-p12 = args.p12
-H4_threshold = args.H4
+    p12 = args.p12
+    H4_threshold = args.H4
 
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-elif torch.backends.mps.is_available():
-    device = torch.device("mps")
-else:
-    device = torch.device("cpu")
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
 
-for root, dirs, files in os.walk(args.dir1):
-    for directory in tqdm(dirs, desc="chromosomes"):
-        dir_path = os.path.join(root, directory)
-        met_files = os.listdir(dir_path)
+    for root, dirs, files in os.walk(args.dir1):
+        for directory in tqdm(dirs, desc="chromosomes"):
+            dir_path = os.path.join(root, directory)
+            met_files = os.listdir(dir_path)
 
-        ge_dir_path = os.path.join(args.dir2, directory)
-        files = os.listdir(ge_dir_path)
+            ge_dir_path = os.path.join(args.dir2, directory)
+            files = os.listdir(ge_dir_path)
 
-        combination = []
+            combination = []
 
-        met_cache = {}
-        ge_cache = {}
+            met_cache = {}
+            ge_cache = {}
 
-        for i in range(len(met_files)):
-            met_cache[i] = pd.read_parquet(f"{dir_path}/{met_files[i]}")
+            for i in range(len(met_files)):
+                met_cache[i] = pd.read_parquet(f"{dir_path}/{met_files[i]}")
 
-        for i in range(len(files)):
-            ge_cache[i] = pd.read_parquet(f"{ge_dir_path}/{files[i]}")
+            for i in range(len(files)):
+                ge_cache[i] = pd.read_parquet(f"{ge_dir_path}/{files[i]}")
 
-        for i in tqdm(range(len(met_files)), desc="processing met", leave=False):
-            input1 = met_cache[i]
-            metadata1 = input1.iloc[:, :6].copy()  
-            mat1 = input1.iloc[:, 6:].copy()
+            for i in tqdm(range(len(met_files)), desc="processing met", leave=False):
+                input1 = met_cache[i]
+                metadata1 = input1.iloc[:, :6].copy()  
+                mat1 = input1.iloc[:, 6:].copy()
 
-            min_pos_1 = metadata1['location_min'].min()
-            max_pos_1 = metadata1['location_max'].max()
+                min_pos_1 = metadata1['location_min'].min()
+                max_pos_1 = metadata1['location_max'].max()
 
-            for j in tqdm(range(len(files)), desc="running files", leave=False):
-                input2 = ge_cache[j]
-                metadata2 = input2.iloc[:, :6].copy()  
-                mat2 = input2.iloc[:, 6:].copy()
+                for j in tqdm(range(len(files)), desc="running files", leave=False):
+                    input2 = ge_cache[j]
+                    metadata2 = input2.iloc[:, :6].copy()  
+                    mat2 = input2.iloc[:, 6:].copy()
 
-                min_pos_2 = metadata2['location_min'].min()
-                max_pos_2 = metadata2['location_max'].max()
+                    min_pos_2 = metadata2['location_min'].min()
+                    max_pos_2 = metadata2['location_max'].max()
 
-                if max_pos_1 < min_pos_2 or max_pos_2 < min_pos_1:
-                    continue
+                    if max_pos_1 < min_pos_2 or max_pos_2 < min_pos_1:
+                        continue
 
-                final_results = coloc_loop(
-                    mat1=mat1,
-                    mat2=mat2,
-                    metadata1=metadata1,
-                    metadata2=metadata2,
-                    num_chunks1=math.ceil(mat1.shape[0]/100),
-                    num_chunks2=math.ceil(mat2.shape[0]/100),
-                    device=device,
-                    p1=1e-4,
-                    p2=1e-4,
-                    p12=p12,
-                    H4_threshold=H4_threshold,
-                )
-                
-                output_file=args.results
+                    final_results = coloc_loop(
+                        mat1=mat1,
+                        mat2=mat2,
+                        metadata1=metadata1,
+                        metadata2=metadata2,
+                        num_chunks1=math.ceil(mat1.shape[0]/100),
+                        num_chunks2=math.ceil(mat2.shape[0]/100),
+                        device=device,
+                        p1=1e-4,
+                        p2=1e-4,
+                        p12=p12,
+                        H4_threshold=H4_threshold,
+                    )
+                    
+                    output_file=args.results
 
-                if final_results is None or final_results.empty:
-                    continue
+                    if final_results is None or final_results.empty:
+                        continue
 
-                if not os.path.exists(output_file):
-                    final_results.to_csv(output_file, sep="\t", index=False, mode='w', header=True)
-                else:
-                    final_results.to_csv(output_file, sep="\t", index=False, mode='a', header=False)
+                    if not os.path.exists(output_file):
+                        final_results.to_csv(output_file, sep="\t", index=False, mode='w', header=True)
+                    else:
+                        final_results.to_csv(output_file, sep="\t", index=False, mode='a', header=False)
+
+if __name__ == "__main__":
+    main()
