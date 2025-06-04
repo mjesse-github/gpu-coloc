@@ -16,9 +16,11 @@ pip install gpu-coloc
 
 ## Verify Installation
 
-Run the test script:
+To confirm installation, clone this repository:
 
 ```bash
+git clone https://github.com/mjesse-github/gpu-coloc
+cd gpu-coloc
 bash test.sh
 ```
 
