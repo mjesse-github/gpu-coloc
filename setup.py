@@ -1,11 +1,16 @@
 from setuptools import setup, find_packages
-
+from pathlib import Path
+this_directory = Path(__file__).parent
+long_description = (this_directory / "README.md").read_text()
 
 setup(
     name="gpu-coloc",
-    version="0.1",
+    version="0.1.2",
     packages=find_packages(),
     license="MIT",
+
+    long_description=long_description,
+    long_description_content_type="text/markdown",
     
     description="Ultra-fast GPU-enabled Bayesian colocalisation",
     url="https://github.com/mjesse-github/gpu-coloc",
@@ -25,7 +30,7 @@ setup(
         "pytz>=2025.1",
         "six>=1.17.0",
         "sympy>=1.13.1",
-        "torch>=2.6.0",
+        "torch>=2.0",
         "tqdm>=4.67.1",
         "typing_extensions>=4.12.2",
         "tzdata>=2025.1"
