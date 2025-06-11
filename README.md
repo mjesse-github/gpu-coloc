@@ -2,6 +2,8 @@
 
 **gpu-coloc** is a GPU-accelerated Bayesian colocalization implementation (COLOC), delivering identical results to R's `coloc.bf_bf` approximately 1000 times faster.
 
+If you have any questions or problems with `gpu-coloc`, please write to `mihkel.jesse@gmail.com`.
+
 ## Citation
 
 If you use **gpu-coloc**, please cite: *(citation placeholder)*
@@ -13,6 +15,23 @@ Install via pip (Python ≥3.12):
 ```bash
 pip install gpu-coloc
 ```
+
+If `pip` cannot find the package, it is probably do to an older version of `pip`. Thus to upgrade it run:
+
+```bash
+
+pip install --upgrade pip
+```
+
+You can set up `gpu-coloc` up in a virtual environment:
+
+```bash
+python -m venv [path_to_venv]
+source [path_to_venv]/bin/activate
+pip install gpu-coloc
+```
+
+This is prefered in production environments or if you are having trouble with package management.
 
 ## Verify Installation
 

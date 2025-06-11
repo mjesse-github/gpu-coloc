@@ -9,14 +9,17 @@ signals_dir = None
 
 def process_group(meta_group, index, chrom, chrom_dir, group_id=None):
     signals = meta_group.index.tolist()
-    mat_files = [os.path.join(signals_dir, f"{sig}.pickle") for sig in signals]
+    mat_files = [os.path.join(signals_dir, f"{sig}.{input_type}") for sig in signals]
     
     min_loc = meta_group["location_min"].min()
     max_loc = meta_group["location_max"].max() if "location_max" in meta_group.columns else meta_group["location_min"].max()
 
     snp_set = set()
     for mat_file in mat_files:
-        df_tmp = pd.read_pickle(mat_file)
+        if input_type == "feather":
+            df_tmp = pd.read_feather(mat_file)
+        else:  
+            df_tmp = pd.read_pickle(mat_file)
         snp_set.update(df_tmp.columns.tolist())
         del df_tmp
 
@@ -31,7 +34,10 @@ def process_group(meta_group, index, chrom, chrom_dir, group_id=None):
 
     for mat_file in mat_files:
         signal_name = os.path.splitext(os.path.basename(mat_file))[0]
-        df_mat = pd.read_pickle(mat_file)
+        if input_type == "feather":
+            df_mat = pd.read_feather(mat_file)
+        else:
+            df_mat = pd.read_pickle(mat_file)
         row_idx = combined_df.index.get_loc(signal_name)
         for snp_col, value in zip(df_mat.columns, df_mat.iloc[0].values):
             if snp_col in snp_columns:
@@ -103,19 +109,23 @@ def main():
     parser.add_argument("--output", type=str, required=True, help="Directory to save parquet files")
     parser.add_argument("--input_summary", type=str, required=True, help="Path to summary TSV file")
     parser.add_argument("--output_summary", type=str, help="Path to write parquet summary TSV")
+    parser.add_argument("--input_type", type=str, help="Type of input files ('pickle' or 'feather')", default="pickle", choices=["pickle", "feather"])
+
     args = parser.parse_args()
 
     global signals_dir
     signals_dir = args.input
 
+    global input_type
+    input_type = args.input_type
+
     os.makedirs(args.output, exist_ok=True)
     metadata = pd.read_csv(args.input_summary, sep="\t")
     metadata["chromosome"] = metadata["chromosome"].astype(str)
-    # Optionally, filter metadata (e.g., signal_strength > 7) here.
     chromosomes = metadata["chromosome"].unique()
 
-    group_index = 0
     for chrom in tqdm(chromosomes, desc="Processing chromosomes"):
+        group_index = 0
         chrom_dir = os.path.join(args.output, chrom)
         os.makedirs(chrom_dir, exist_ok=True)
         meta_sub = metadata[metadata["chromosome"] == chrom].copy()
