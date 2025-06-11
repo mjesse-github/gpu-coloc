@@ -71,19 +71,15 @@ def create_parquet(meta_sub, index, chrom, chrom_dir):
 
     if len(positions) >= 2:
         positions_sorted = sorted(positions)
-        max_gap, i1, j1 = 0, 0, 0
-        for i in range(len(positions_sorted) - 1):
-            gap = positions_sorted[i + 1] - positions_sorted[i]
-            if gap > max_gap:
-                max_gap, i1, j1 = gap, i, i + 1
-        if max_gap > 500_000:
-            split_point_1 = positions_sorted[i1]
-            split_point_2 = positions_sorted[j1]
-            df_part1 = meta_sub[meta_sub["location_min"] <= split_point_1].copy()
-            df_part2 = meta_sub[meta_sub["location_min"] >= split_point_2].copy()
-            index = create_parquet(df_part1, index, chrom, chrom_dir)
-            index = create_parquet(df_part2, index, chrom, chrom_dir)
-            return index
+        for i in range(len(positions_sorted)):
+            gap = positions_sorted[i] - positions_sorted[0]
+            if gap > 1_000_000:
+                split_point = positions_sorted[i - 1] 
+                df_part1 = meta_sub[meta_sub["location_min"] <= split_point].copy()
+                df_part2 = meta_sub[meta_sub["location_min"] > split_point].copy()
+                index = create_parquet(df_part1, index, chrom, chrom_dir)
+                index = create_parquet(df_part2, index, chrom, chrom_dir)
+                return index
 
     if len(meta_sub) > 1000:
         signals = meta_sub.index.tolist()
