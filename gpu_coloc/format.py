@@ -53,7 +53,7 @@ def process_group(meta_group, index, chrom, chrom_dir, group_id=None):
         parquet_filename = f"chr{chrom}_met_group_{index}_region_{min_loc}-{max_loc}.parquet"
     parquet_path = os.path.join(chrom_dir, parquet_filename)
     
-    combined_df.to_parquet(parquet_path, engine="pyarrow")
+    combined_df.to_parquet(parquet_path)
     parquet_records.append({
         "chromosome": chrom,
         "group": group_id if group_id is not None else index,
@@ -73,7 +73,7 @@ def create_parquet(meta_sub, index, chrom, chrom_dir):
         positions_sorted = sorted(positions)
         for i in range(len(positions_sorted)):
             gap = positions_sorted[i] - positions_sorted[0]
-            if gap > 1_000_000:
+            if gap > 500_000:
                 split_point = positions_sorted[i - 1] 
                 df_part1 = meta_sub[meta_sub["location_min"] <= split_point].copy()
                 df_part2 = meta_sub[meta_sub["location_min"] > split_point].copy()
