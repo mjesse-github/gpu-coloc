@@ -1,0 +1,188 @@
+---
+title: "gpu-coloc Example Workflow (R)"
+output: html_document
+---
+
+```{r setup, message=FALSE}
+library(tidyverse)
+library(arrow)
+library(fs)
+
+dir_create("example")
+```
+
+## Create a metadata table summarizing the GWAS datasets
+
+```{r}
+gwas_input_table <- read_tsv("example_data/example_gwas_table.tsv")
+gwas_input_table
+```
+
+## Define file paths for saving GWAS signals and summary files
+
+```{r}
+gwas_signals_directory <- "example/gwas_signals"
+gwas_summary_file <- "example/gwas_summary.tsv"
+dir_create(gwas_signals_directory)
+```
+
+## Generate summary files for each signal and save individual signal data as `.feather` files
+
+```{r}
+approx_bf_estimates <- function(variant, z, V, type, suffix=NULL, sdY=1, effect_priors=list(quant=0.15, cc=0.2)) {
+  sd_prior <- if (type == "quant") effect_priors$quant * sdY else effect_priors$cc
+  r <- sd_prior^2 / (sd_prior^2 + V)
+  lABF <- 0.5 * (log(1 - r) + (r * z^2))
+  ret <- tibble(variant=variant, lbf=lABF)
+  if (!is.null(suffix)) {
+    names(ret) <- paste0(names(ret), ".", suffix)
+  }
+  ret$lbf <- as.numeric(ret$lbf)
+  ret_mat <- ret %>% select(variant, lbf) %>% pivot_wider(names_from=variant, values_from=lbf)
+  ret_mat
+}
+
+for (i in seq_len(nrow(gwas_input_table))) {
+  gwas <- gwas_input_table[i,]
+  lead_variants <- read_tsv(gwas$leads)
+  gwas_name <- gwas$GWAS
+
+  if (gwas$file_type == "parquet") {
+    gwas_df <- read_parquet(gwas$GWAS_path)
+  } else if (gwas$file_type == "tsv") {
+    gwas_df <- read_tsv(gwas$GWAS_path)
+  } else {
+    message("Invalid file type for ", gwas$GWAS_path)
+    next
+  }
+
+  for (j in seq_len(nrow(lead_variants))) {
+    region <- lead_variants[j,]
+    chrom <- region[[gwas$chr_col]]
+    region_start <- region[[gwas$pos_col]] - 500000
+    region_end <- region[[gwas$pos_col]] + 500000
+
+    region_gwas <- gwas_df %>% filter(.data[[gwas$chr_col]] == chrom)
+    chrom_label <- if (chrom == 23) "X" else as.character(chrom)
+
+    region_signal <- region_gwas %>%
+      filter(.data[[gwas$pos_col]] >= region_start, .data[[gwas$pos_col]] <= region_end) %>%
+      mutate(
+        variant = paste0("chr", chrom_label, "_", as.integer(.data[[gwas$pos_col]]), "_", .data[[gwas$ref_col]], "_", .data[[gwas$alt_col]]),
+        z = .data[[gwas$beta_col]] / .data[[gwas$se_col]],
+        V = (.data[[gwas$se_col]])^2
+      )
+
+    mat <- approx_bf_estimates(region_signal$variant, region_signal$z, region_signal$V, "quant")
+    signal_strength <- max(as.numeric(mat), na.rm=TRUE)
+    variant_id <- names(mat)[which.max(as.numeric(mat))]
+
+    if (signal_strength < 5) next
+
+    signal <- sprintf("%s_chr%s:%d-%d", gwas_name, chrom_label, region_start, region_end)
+    summary_data <- tibble(
+      signal = signal,
+      chromosome = chrom_label,
+      location_min = region_start,
+      location_max = region_end,
+      signal_strength = signal_strength,
+      lead_variant = variant_id
+    )
+
+    write_tsv(summary_data, gwas_summary_file, append = file_exists(gwas_summary_file))
+    output_file_name <- sprintf("%s.feather", signal)
+    output_file_path <- path(gwas_signals_directory, output_file_name)
+    mat_t <- as_tibble(mat)
+    write_feather(mat_t, output_file_path)
+  }
+}
+```
+
+## The summary file will have the following structure
+
+```{r}
+read_tsv(gwas_summary_file)
+```
+
+## Each signal `.feather` file will contain log Bayes factors (lbf) as shown below
+
+```{r}
+read_feather("example/gwas_signals/L_HDL_C_pct_chrX:153853564-154853564.feather")
+```
+
+## Repeat the same steps for the second dataset (e.g., eQTL)
+
+```{r}
+process_gwas_file <- function(file_path, directory_name, mat_dir, summary_file_path) {
+  dir_create(mat_dir)
+  df <- tryCatch(read_tsv(file_path), error=function(e) { message(e); return(NULL) })
+  if (is.null(df)) return()
+  trait_data <- split(df, df$molecular_trait_id)
+  for (trait_id in names(trait_data)) {
+    group <- trait_data[[trait_id]]
+    for (i in 1:10) {
+      lbf_column <- paste0("lbf_variable", i)
+      if (lbf_column %in% names(group)) {
+        process_signal(group, directory_name, trait_id, mat_dir, lbf_column, i, summary_file_path)
+      }
+    }
+  }
+}
+
+process_signal <- function(group, directory_name, trait_id, mat_dir, lbf_column, lbf_index, summary_file_path) {
+  df_filtered <- group %>%
+    select(molecular_trait_id, region, variant, chromosome, position, !!lbf_column) %>%
+    rename(lbf = !!lbf_column)
+  if (all(df_filtered$lbf == 0, na.rm=TRUE)) return()
+  signal_strength <- max(abs(df_filtered$lbf), na.rm=TRUE)
+  if (signal_strength < 5) return()
+  chromosome <- as.character(df_filtered$chromosome[1])
+  location_min <- min(df_filtered$position, na.rm=TRUE)
+  location_max <- max(df_filtered$position, na.rm=TRUE)
+  signal <- sprintf("%s_%s_L%d", directory_name, trait_id, lbf_index)
+  output_file_name <- sprintf("%s.feather", signal)
+  output_file_path <- path(mat_dir, output_file_name)
+  mat1_df <- df_filtered %>% select(variant, lbf) %>% pivot_wider(names_from=variant, values_from=lbf)
+  variant_id <- names(mat1_df)[which.max(as.numeric(mat1_df))]
+  write_feather(as_tibble(mat1_df), output_file_path)
+  summary_data <- tibble(
+    signal = signal,
+    chromosome = chromosome,
+    location_min = location_min,
+    location_max = location_max,
+    signal_strength = signal_strength,
+    lead_variant = variant_id
+  )
+  write_tsv(summary_data, summary_file_path, append = file_exists(summary_file_path))
+}
+
+eqtl_table <- read_tsv("example_data/example_eQTL_table.tsv")
+eqtl_signals_directory <- "example/eqtl_signals"
+dir_create(eqtl_signals_directory)
+eqtl_summary_file <- "example/eqtl_summary.tsv"
+
+for (i in seq_len(nrow(eqtl_table))) {
+  dataset_id <- eqtl_table$id[i]
+  file_path <- eqtl_table$path[i]
+  process_gwas_file(file_path, dataset_id, eqtl_signals_directory, eqtl_summary_file)
+}
+```
+
+## Format the saved signals using the `gpu-coloc` formatting tool
+
+```{bash}
+gpu-coloc -f --input example/gwas_signals --output example/formatted_gwas --input_summary example/gwas_summary.tsv --output_summary example/gwas_files_summary.tsv --input_type feather
+gpu-coloc -f --input example/eqtl_signals --output example/formatted_eqtls --input_summary example/eqtl_summary.tsv --output_summary example/eqtl_files_summary.tsv --input_type feather
+```
+
+## Run `gpu-coloc` using the following command
+
+```{bash}
+gpu-coloc -r --dir1 example/formatted_eqtls --dir2 example/formatted_gwas --results example/example_results.tsv --p12 1e-6 --H4 0.8
+```
+
+## The results can be viewed in the final output file
+
+```{r}
+read_tsv("example/example_results.tsv")
+```

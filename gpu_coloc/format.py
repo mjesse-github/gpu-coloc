@@ -72,8 +72,8 @@ def create_parquet(meta_sub, index, chrom, chrom_dir):
     if len(positions) >= 2:
         positions_sorted = sorted(positions)
         for i in range(len(positions_sorted)):
-            gap = positions_sorted[i] - positions_sorted[0]
-            if gap > 500_000:
+            gap = positions_sorted[i] - positions_sorted[i-1]
+            if gap > 1_000_000:
                 split_point = positions_sorted[i - 1] 
                 df_part1 = meta_sub[meta_sub["location_min"] <= split_point].copy()
                 df_part2 = meta_sub[meta_sub["location_min"] > split_point].copy()

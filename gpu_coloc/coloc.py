@@ -68,7 +68,6 @@ def coloc_bf_bf_torch(
     pp_H3_2d = pp_abf_3d[3]  
     pp_H4_2d = pp_abf_3d[4]  
 
-
     i_coords = torch.arange(N, device=device).unsqueeze(1).expand(N, K).flatten() 
     j_coords = torch.arange(K, device=device).unsqueeze(0).expand(N, K).flatten() 
 
