@@ -98,7 +98,7 @@ gpu-coloc --format --input [path_to_signals] --input_summary [summary_file] --ou
 ```bash
 gpu-coloc coloc.py --run --dir1 [formatted_dataset_1] --dir2 [formatted_dataset_2] --results [results_output] --p12 1e-6 --H4 0.8
 ```
-#### Parameters for `gpu-coloc coloc.py --run`
+#### Parameters for `gpu-coloc --run`
 
 - `--dir1` (required): Path to the first formatted dataset directory.
 - `--dir2` (required): Path to the second formatted dataset directory.
