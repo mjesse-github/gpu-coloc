@@ -6,7 +6,11 @@ If you have any questions or problems with `gpu-coloc`, please write to `mihkel.
 
 ## Citation
 
-If you use **gpu-coloc**, please cite: *(citation placeholder)*
+If you use **gpu-coloc**, please cite: [https://doi.org/10.1101/2025.08.25.672103](https://doi.org/10.1101/2025.08.25.672103)
+
+##
+
+All of eQTL Catalogue ready for use with gpu-coloc can be found [here](https://tartuulikool-my.sharepoint.com/:f:/r/personal/a72094_ut_ee/Documents/eQTL_Catlogue_gpu-coloc?csf=1&web=1&e=U6OhP4). (currently uploading)
 
 ## Installation
 
