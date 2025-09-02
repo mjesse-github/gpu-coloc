@@ -6,7 +6,11 @@ If you have any questions or problems with `gpu-coloc`, please write to `mihkel.
 
 ## Citation
 
-If you use **gpu-coloc**, please cite: *(citation placeholder)*
+If you use **gpu-coloc**, please cite: [https://doi.org/10.1101/2025.08.25.672103](https://doi.org/10.1101/2025.08.25.672103)
+
+##
+
+All of eQTL Catalogue ready for use with gpu-coloc can be found [here](https://tartuulikool-my.sharepoint.com/:f:/r/personal/a72094_ut_ee/Documents/eQTL_Catlogue_gpu-coloc?csf=1&web=1&e=U6OhP4). (currently uploading)
 
 ## Installation
 
@@ -98,7 +102,7 @@ gpu-coloc --format --input [path_to_signals] --input_summary [summary_file] --ou
 ```bash
 gpu-coloc coloc.py --run --dir1 [formatted_dataset_1] --dir2 [formatted_dataset_2] --results [results_output] --p12 1e-6 --H4 0.8
 ```
-#### Parameters for `gpu-coloc coloc.py --run`
+#### Parameters for `gpu-coloc --run`
 
 - `--dir1` (required): Path to the first formatted dataset directory.
 - `--dir2` (required): Path to the second formatted dataset directory.
