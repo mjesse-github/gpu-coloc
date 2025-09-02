@@ -171,7 +171,7 @@ def coloc_loop(
 ):
 
     try:
-        overlapping_pairs = trim(mat1, mat2, p12)
+        overlapping_pairs = trim(mat1, mat2)
         valid_pairs = set(overlapping_pairs[["i", "j"]].itertuples(index=False, name=None))
     except:
         print("Possible error in trim function")
@@ -295,85 +295,83 @@ def main():
 
     for root, dirs, files in os.walk(args.dir1):
         for directory in tqdm(dirs, desc="chromosomes"):
-            dir_path = os.path.join(root, directory)
-            met_files = os.listdir(dir_path)
-
-            ge_dir_path = os.path.join(args.dir2, directory)
-            files = os.listdir(ge_dir_path)
-
-            combination = []
-
-            met_cache = {}
-            ge_cache = {}
-
-            for i in range(len(met_files)):
-                # met_cache[i] = pd.read_parquet(f"{dir_path}/{met_files[i]}")
-                pf = pq.ParquetFile(
-                    f"{dir_path}/{met_files[i]}",
-                    thrift_string_size_limit=2**31-1,
-                    thrift_container_size_limit=2**31-1,
-                )
-
-                table = pf.read()
-                met_cache[i] = table.to_pandas()
-
             try:
+                dir_path = os.path.join(root, directory)
+                met_files = os.listdir(dir_path)
+
+                ge_dir_path = os.path.join(args.dir2, directory)
+                files = os.listdir(ge_dir_path)
+
+                met_cache = {}
+                ge_cache = {}
+
+                for i in range(len(met_files)):
+                    # met_cache[i] = pd.read_parquet(f"{dir_path}/{met_files[i]}")
+                    pf = pq.ParquetFile(
+                        f"{dir_path}/{met_files[i]}",
+                        thrift_string_size_limit=2**31-1,
+                        thrift_container_size_limit=2**31-1,
+                    )
+
+                    table = pf.read()
+                    met_cache[i] = table.to_pandas()
+
                 for i in range(len(files)):
                     # ge_cache[i] = pd.read_parquet(f"{ge_dir_path}/{files[i]}")
-                   pf = pq.ParquetFile(
-                       f"{ge_dir_path}/{files[i]}",
-                       thrift_string_size_limit=2**31-1,
-                       thrift_container_size_limit=2**31-1,
-                   )
+                    pf = pq.ParquetFile(
+                        f"{ge_dir_path}/{files[i]}",
+                        thrift_string_size_limit=2**31-1,
+                        thrift_container_size_limit=2**31-1,
+                    )
 
-                   table = pf.read()
-                   ge_cache[i] = table.to_pandas()
+                    table = pf.read()
+                    ge_cache[i] = table.to_pandas()
+
+                for i in tqdm(range(len(met_files)), desc="processing met", leave=False):
+                    input1 = met_cache[i]
+                    metadata1 = input1.iloc[:, :6].copy()  
+                    mat1 = input1.iloc[:, 6:].copy()
+
+                    min_pos_1 = metadata1['location_min'].min()
+                    max_pos_1 = metadata1['location_max'].max()
+
+                    for j in tqdm(range(len(files)), desc="running files", leave=False):
+                        input2 = ge_cache[j]
+                        metadata2 = input2.iloc[:, :6].copy()  
+                        mat2 = input2.iloc[:, 6:].copy()
+
+                        min_pos_2 = metadata2['location_min'].min()
+                        max_pos_2 = metadata2['location_max'].max()
+
+                        if max_pos_1 < min_pos_2 or max_pos_2 < min_pos_1:
+                            continue
+
+                        final_results = coloc_loop(
+                            mat1=mat1,
+                            mat2=mat2,
+                            metadata1=metadata1,
+                            metadata2=metadata2,
+                            num_chunks1=math.ceil(mat1.shape[0]/100),
+                            num_chunks2=math.ceil(mat2.shape[0]/100),
+                            device=device,
+                            p1=1e-4,
+                            p2=1e-4,
+                            p12=p12,
+                            H4_threshold=H4_threshold,
+                        )
+                        
+                        output_file=args.results
+
+                        if final_results is None or final_results.empty:
+                            continue
+
+                        if not os.path.exists(output_file):
+                            final_results.to_csv(output_file, sep="\t", index=False, mode='w', header=True)
+                        else:
+                            final_results.to_csv(output_file, sep="\t", index=False, mode='a', header=False)
             except Exception as e:
                 print(f"Error reading files from {ge_dir_path}: {e}, possibly missing")
                 continue
-
-            for i in tqdm(range(len(met_files)), desc="processing met", leave=False):
-                input1 = met_cache[i]
-                metadata1 = input1.iloc[:, :6].copy()  
-                mat1 = input1.iloc[:, 6:].copy()
-
-                min_pos_1 = metadata1['location_min'].min()
-                max_pos_1 = metadata1['location_max'].max()
-
-                for j in tqdm(range(len(files)), desc="running files", leave=False):
-                    input2 = ge_cache[j]
-                    metadata2 = input2.iloc[:, :6].copy()  
-                    mat2 = input2.iloc[:, 6:].copy()
-
-                    min_pos_2 = metadata2['location_min'].min()
-                    max_pos_2 = metadata2['location_max'].max()
-
-                    if max_pos_1 < min_pos_2 or max_pos_2 < min_pos_1:
-                        continue
-
-                    final_results = coloc_loop(
-                        mat1=mat1,
-                        mat2=mat2,
-                        metadata1=metadata1,
-                        metadata2=metadata2,
-                        num_chunks1=math.ceil(mat1.shape[0]/100),
-                        num_chunks2=math.ceil(mat2.shape[0]/100),
-                        device=device,
-                        p1=1e-4,
-                        p2=1e-4,
-                        p12=p12,
-                        H4_threshold=H4_threshold,
-                    )
-                    
-                    output_file=args.results
-
-                    if final_results is None or final_results.empty:
-                        continue
-
-                    if not os.path.exists(output_file):
-                        final_results.to_csv(output_file, sep="\t", index=False, mode='w', header=True)
-                    else:
-                        final_results.to_csv(output_file, sep="\t", index=False, mode='a', header=False)
 
 if __name__ == "__main__":
     main()
