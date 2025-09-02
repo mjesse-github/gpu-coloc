@@ -5,6 +5,7 @@ import torch
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
+import pyarrow.parquet as pq
 
 def logdiff_torch(a, b):
     mx = torch.maximum(a, b)
@@ -306,10 +307,30 @@ def main():
             ge_cache = {}
 
             for i in range(len(met_files)):
-                met_cache[i] = pd.read_parquet(f"{dir_path}/{met_files[i]}")
+                # met_cache[i] = pd.read_parquet(f"{dir_path}/{met_files[i]}")
+                pf = pq.ParquetFile(
+                    f"{dir_path}/{met_files[i]}",
+                    thrift_string_size_limit=2**31-1,
+                    thrift_container_size_limit=2**31-1,
+                )
 
-            for i in range(len(files)):
-                ge_cache[i] = pd.read_parquet(f"{ge_dir_path}/{files[i]}")
+                table = pf.read()
+                met_cache[i] = table.to_pandas()
+
+            try:
+                for i in range(len(files)):
+                    # ge_cache[i] = pd.read_parquet(f"{ge_dir_path}/{files[i]}")
+                   pf = pq.ParquetFile(
+                       f"{ge_dir_path}/{files[i]}",
+                       thrift_string_size_limit=2**31-1,
+                       thrift_container_size_limit=2**31-1,
+                   )
+
+                   table = pf.read()
+                   ge_cache[i] = table.to_pandas()
+            except Exception as e:
+                print(f"Error reading files from {ge_dir_path}: {e}, possibly missing")
+                continue
 
             for i in tqdm(range(len(met_files)), desc="processing met", leave=False):
                 input1 = met_cache[i]
