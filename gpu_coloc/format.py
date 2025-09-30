@@ -116,7 +116,8 @@ def main():
     input_type = args.input_type
 
     os.makedirs(args.output, exist_ok=True)
-    metadata = pd.read_csv(args.input_summary, sep="\t")
+    metadata = pd.read_csv(args.input_summary, sep="\t", usecols=["signal","chromosome","location_min","location_max","signal_strength","lead_variant"])
+
     metadata["chromosome"] = metadata["chromosome"].astype(str)
     chromosomes = metadata["chromosome"].unique()
 
