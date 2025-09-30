@@ -10,7 +10,7 @@ If you use **gpu-coloc**, please cite: [https://doi.org/10.1101/2025.08.25.67210
 
 ##
 
-All of eQTL Catalogue ready for use with gpu-coloc can be found [here](https://tartuulikool-my.sharepoint.com/:f:/r/personal/a72094_ut_ee/Documents/eQTL_Catlogue_gpu-coloc?csf=1&web=1&e=U6OhP4). (currently uploading)
+All of eQTL Catalogue ready for use with gpu-coloc can be found [here](https://tartuulikool-my.sharepoint.com/:f:/r/personal/a72094_ut_ee/Documents/eQTL_Catlogue_gpu-coloc?csf=1&web=1&e=U6OhP4).
 
 ## Installation
 
@@ -100,7 +100,7 @@ gpu-coloc --format --input [path_to_signals] --input_summary [summary_file] --ou
 ### 3. Run Colocalization
 
 ```bash
-gpu-coloc coloc.py --run --dir1 [formatted_dataset_1] --dir2 [formatted_dataset_2] --results [results_output] --p12 1e-6 --H4 0.8
+gpu-coloc --run --dir1 [formatted_dataset_1] --dir2 [formatted_dataset_2] --results [results_output] --p12 1e-6 --H4 0.8
 ```
 #### Parameters for `gpu-coloc --run`
 
