@@ -89,9 +89,9 @@ def coloc_bf_bf_torch(
 
     return {
         "summary": summary_df,
-        "pp_3d": pp_abf_3d.cpu().numpy(),
-        "pp_H4_matrix": pp_H4_2d.cpu().numpy(),
-        "priors": {"p1": p1, "p2": p2, "p12": p12}
+        # "pp_3d": pp_abf_3d.cpu().numpy(),
+        # "pp_H4_matrix": pp_H4_2d.cpu().numpy(),
+        # "priors": {"p1": p1, "p2": p2, "p12": p12}
     }
 
 
@@ -164,24 +164,24 @@ def coloc_loop(
     mat2: pd.DataFrame,
     metadata1: pd.DataFrame,
     metadata2: pd.DataFrame,
+    n_tests,
+    chunk_size=100,
     num_chunks1=0,
     num_chunks2=0,
     device="cuda",
-    p1=1e-4, p2=1e-4, p12=1e-6, H4_threshold=0.8
+    p1=1e-4, p2=1e-4, p12=1e-6, H4_threshold=0.8,
 ):
 
     try:
         overlapping_pairs = trim(mat1, mat2)
         valid_pairs = set(overlapping_pairs[["i", "j"]].itertuples(index=False, name=None))
     except:
-        print("Possible error in trim function")
-        return pd.DataFrame()
+        # print("Possible error in trim function")
+        return pd.DataFrame(), n_tests
 
     if overlapping_pairs.empty:
-        return pd.DataFrame()
+        return pd.DataFrame(), n_tests
     
-    chunk_size = 100
-
     mat1_chunks = []
     meta1_chunks = []
     start1_idx = 0
@@ -232,10 +232,12 @@ def coloc_loop(
 
         summary_df = out["summary"]
 
-        summary_df.loc[:, "idx1"] = summary_df["idx1"] + pair[0] * 100
-        summary_df.loc[:, "idx2"] = summary_df["idx2"] + pair[1] * 100
+        summary_df.loc[:, "idx1"] = summary_df["idx1"] + pair[0] * chunk_size
+        summary_df.loc[:, "idx2"] = summary_df["idx2"] + pair[1] * chunk_size
 
         summary_df = summary_df[summary_df.apply(lambda row: (row["idx1"], row["idx2"]) in valid_pairs, axis=1)]
+
+        n_tests+=summary_df.shape[0]
 
         summary_df = summary_df[summary_df["PP.H4"] >= H4_threshold].reset_index(drop=True)
 
@@ -270,9 +272,11 @@ def coloc_loop(
     else:
         final_df = pd.DataFrame()
 
-    return final_df
+    return final_df, n_tests
 
 def main():
+    n_tests = 0
+
     parser = argparse.ArgumentParser(description="Run coloc")
 
     parser.add_argument("--dir1", type=str, required=True, help="First directory of directories of parquet files, e.g., 'formatted_eqtls'.")
@@ -288,10 +292,13 @@ def main():
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
+        chunk_size = 1000
     elif torch.backends.mps.is_available():
         device = torch.device("mps")
+        chunk_size = 100
     else:
         device = torch.device("cpu")
+        chunk_size = 100
 
     for root, dirs, files in os.walk(args.dir1):
         for directory in tqdm(dirs, desc="chromosomes"):
@@ -316,6 +323,7 @@ def main():
                     table = pf.read()
                     met_cache[i] = table.to_pandas()
 
+                #can be made into bigger loops to reduce RAM usage
                 for i in range(len(files)):
                     # ge_cache[i] = pd.read_parquet(f"{ge_dir_path}/{files[i]}")
                     pf = pq.ParquetFile(
@@ -346,13 +354,15 @@ def main():
                         if max_pos_1 < min_pos_2 or max_pos_2 < min_pos_1:
                             continue
 
-                        final_results = coloc_loop(
+                        final_results, n_tests = coloc_loop(
                             mat1=mat1,
                             mat2=mat2,
                             metadata1=metadata1,
                             metadata2=metadata2,
-                            num_chunks1=math.ceil(mat1.shape[0]/100),
-                            num_chunks2=math.ceil(mat2.shape[0]/100),
+                            n_tests=n_tests,
+                            chunk_size=chunk_size,
+                            num_chunks1=math.ceil(mat1.shape[0]/chunk_size),
+                            num_chunks2=math.ceil(mat2.shape[0]/chunk_size),
                             device=device,
                             p1=1e-4,
                             p2=1e-4,
@@ -372,6 +382,8 @@ def main():
             except Exception as e:
                 print(f"Error reading files from {ge_dir_path}: {e}, possibly missing")
                 continue
+
+    print(f"{n_tests} pairs tested for colocalisation")
 
 if __name__ == "__main__":
     main()
