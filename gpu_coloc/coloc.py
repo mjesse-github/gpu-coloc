@@ -232,6 +232,9 @@ def coloc_loop(
 
         summary_df = out["summary"]
 
+        if {"idx1","idx2"} - set(summary_df.columns):
+            continue
+
         summary_df.loc[:, "idx1"] = summary_df["idx1"] + pair[0] * chunk_size
         summary_df.loc[:, "idx2"] = summary_df["idx2"] + pair[1] * chunk_size
 
@@ -300,56 +303,51 @@ def main():
         device = torch.device("cpu")
         chunk_size = 100
 
-    for root, dirs, files in os.walk(args.dir1):
+    for root, dirs, _ in os.walk(args.dir1):
         for directory in tqdm(dirs, desc="chromosomes"):
             try:
-                dir_path = os.path.join(root, directory)
-                met_files = os.listdir(dir_path)
+                dir1_path = os.path.join(root, directory)
+                dir1_files = os.listdir(dir1_path)
 
-                ge_dir_path = os.path.join(args.dir2, directory)
-                files = os.listdir(ge_dir_path)
+                dir2_path = os.path.join(args.dir2, directory)
+                dir2_files = os.listdir(dir2_path)
 
-                met_cache = {}
-                ge_cache = {}
+                dir1_cache = {}
 
-                for i in range(len(met_files)):
-                    # met_cache[i] = pd.read_parquet(f"{dir_path}/{met_files[i]}")
+                for i in range(len(dir1_files)):
                     pf = pq.ParquetFile(
-                        f"{dir_path}/{met_files[i]}",
+                        os.path.join(dir1_path, dir1_files[i]),
                         thrift_string_size_limit=2**31-1,
                         thrift_container_size_limit=2**31-1,
                     )
 
                     table = pf.read()
-                    met_cache[i] = table.to_pandas()
+                    dir1_cache[i] = table.to_pandas()
 
-                #can be made into bigger loops to reduce RAM usage
-                for i in range(len(files)):
-                    # ge_cache[i] = pd.read_parquet(f"{ge_dir_path}/{files[i]}")
+                for j in range(len(dir2_files)):
                     pf = pq.ParquetFile(
-                        f"{ge_dir_path}/{files[i]}",
+                        os.path.join(dir2_path, dir2_files[j]),
                         thrift_string_size_limit=2**31-1,
                         thrift_container_size_limit=2**31-1,
                     )
 
-                    table = pf.read()
-                    ge_cache[i] = table.to_pandas()
+                    table = pf.read().to_pandas()
 
-                for i in tqdm(range(len(met_files)), desc="processing met", leave=False):
-                    input1 = met_cache[i]
-                    metadata1 = input1.iloc[:, :6].copy()  
-                    mat1 = input1.iloc[:, 6:].copy()
+                    metadata2 = table.iloc[:, :6].copy()  
+                    mat2 = table.iloc[:, 6:].copy()
 
-                    min_pos_1 = metadata1['location_min'].min()
-                    max_pos_1 = metadata1['location_max'].max()
+                    del table
 
-                    for j in tqdm(range(len(files)), desc="running files", leave=False):
-                        input2 = ge_cache[j]
-                        metadata2 = input2.iloc[:, :6].copy()  
-                        mat2 = input2.iloc[:, 6:].copy()
+                    min_pos_2 = metadata2['location_min'].min()
+                    max_pos_2 = metadata2['location_max'].max()
 
-                        min_pos_2 = metadata2['location_min'].min()
-                        max_pos_2 = metadata2['location_max'].max()
+                    for i in tqdm(range(len(dir1_files)), desc="processing met", leave=False):
+                        input1 = dir1_cache[i]
+                        metadata1 = input1.iloc[:, :6].copy()  
+                        mat1 = input1.iloc[:, 6:].copy()
+
+                        min_pos_1 = metadata1['location_min'].min()
+                        max_pos_1 = metadata1['location_max'].max()
 
                         if max_pos_1 < min_pos_2 or max_pos_2 < min_pos_1:
                             continue
@@ -380,7 +378,7 @@ def main():
                         else:
                             final_results.to_csv(output_file, sep="\t", index=False, mode='a', header=False)
             except Exception as e:
-                print(f"Error reading files from {ge_dir_path}: {e}, possibly missing")
+                print(f"Error reading files from {dir2_path}: {e}, possibly missing")
                 continue
 
     print(f"{n_tests} pairs tested for colocalisation")
