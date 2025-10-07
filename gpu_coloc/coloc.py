@@ -40,11 +40,20 @@ def coloc_bf_bf_torch(
     N, M = bf1_arr.shape
     K, _ = bf2_arr.shape
 
-    bf1_3d = bf1_arr.unsqueeze(1) 
-    bf2_3d = bf2_arr.unsqueeze(0) 
-    sum_3d = bf1_3d + bf2_3d 
+    # bf1_3d = bf1_arr.unsqueeze(1) 
+    # bf2_3d = bf2_arr.unsqueeze(0) 
+    # sum_3d = bf1_3d + bf2_3d 
 
-    sum_3d_logexp = torch.logsumexp(sum_3d, dim=2)  
+    # sum_3d_logexp = torch.logsumexp(sum_3d, dim=2)  
+
+    a_max = bf1_arr.max(dim=1, keepdim=True).values        
+    b_max = bf2_arr.max(dim=1, keepdim=True).values         
+
+    A = torch.exp(bf1_arr - a_max)                           
+    B = torch.exp(bf2_arr - b_max)                            
+    S = A @ B.t()                                       
+
+    sum_3d_logexp = (a_max + b_max.t()) + torch.log(S.clamp_min(1e-45)) 
 
     l1_sum = torch.logsumexp(bf1_arr, dim=1)  
     l2_sum = torch.logsumexp(bf2_arr, dim=1)  
@@ -341,7 +350,7 @@ def main():
                     min_pos_2 = metadata2['location_min'].min()
                     max_pos_2 = metadata2['location_max'].max()
 
-                    for i in tqdm(range(len(dir1_files)), desc="processing met", leave=False):
+                    for i in tqdm(range(len(dir1_files)), desc="processing inner files", leave=False):
                         input1 = dir1_cache[i]
                         metadata1 = input1.iloc[:, :6].copy()  
                         mat1 = input1.iloc[:, 6:].copy()
@@ -378,7 +387,7 @@ def main():
                         else:
                             final_results.to_csv(output_file, sep="\t", index=False, mode='a', header=False)
             except Exception as e:
-                print(f"Error reading files from {dir2_path}: {e}, possibly missing")
+                print(f"Error while using files from {dir2_path}: {e}")
                 continue
 
     print(f"{n_tests} pairs tested for colocalisation")
