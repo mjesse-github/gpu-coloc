@@ -1,6 +1,6 @@
 # gpu-coloc
 
-**gpu-coloc** is a GPU-accelerated Bayesian colocalization implementation (COLOC), delivering identical results to R's `coloc.bf_bf` approximately 1000 times faster.
+**gpu-coloc** is a GPU-accelerated Bayesian colocalization implementation (COLOC), delivering identical results to R's `coloc.bf_bf` approximately 1000 times faster. Torch support is required, thus `gpu-coloc` can be used on M-series Mac(book)s and machines with NVIDIA GPUs.
 
 If you have any questions or problems with `gpu-coloc`, please write to `mihkel.jesse@gmail.com`.
 
