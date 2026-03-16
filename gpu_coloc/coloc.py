@@ -299,14 +299,13 @@ def main():
     parser.add_argument("--results", type=str, required=True, help="File to write the colocalization results, e.g., 'results.tsv'.")
     parser.add_argument("--p12", type=float, required=True, help="p12 prior, e.g. 1e-6")
     parser.add_argument("--H4", type=float, required=False, help="Threshold for H4, e.g. 0.8", default=0.8)
-    parser.add_argument("--silent", type=bool, required=False, help="Output info printing should be silent? default True", default=True)
-    parser.add_argument("--CPU", type=bool, required=False, help="Force Torch calculations on CPU, should only be set True for testing time, default False", default=False)
+    parser.add_argument("--verbose", action="store_true", help="Print timing and test info")
+    parser.add_argument("--CPU", action="store_true", help="Force Torch calculations on CPU")
 
     args = parser.parse_args()
 
     p12 = args.p12
     H4_threshold = args.H4
-    silent = args.silent
 
     IO_time = 0
     coloc_time = 0
@@ -418,7 +417,9 @@ def main():
                 print(f"Error while using files from {dir2_path}: {e}")
                 continue
 
-    if not silent:
+        dirs.clear()
+
+    if args.verbose:
         print(f"{n_tests} pairs tested for colocalisation")
         print(f"IO time: {IO_time}")
         print(f"coloc time: {coloc_time}")  
