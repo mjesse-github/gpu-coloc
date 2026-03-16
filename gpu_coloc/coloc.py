@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 import pyarrow.parquet as pq
+import time
 
 def logdiff_torch(a, b):
     mx = torch.maximum(a, b)
@@ -287,6 +288,8 @@ def coloc_loop(
     return final_df, n_tests
 
 def main():
+    run_start = time.time()
+
     n_tests = 0
 
     parser = argparse.ArgumentParser(description="Run coloc")
@@ -296,21 +299,31 @@ def main():
     parser.add_argument("--results", type=str, required=True, help="File to write the colocalization results, e.g., 'results.tsv'.")
     parser.add_argument("--p12", type=float, required=True, help="p12 prior, e.g. 1e-6")
     parser.add_argument("--H4", type=float, required=False, help="Threshold for H4, e.g. 0.8", default=0.8)
+    parser.add_argument("--silent", type=bool, required=False, help="Output info printing should be silent? default True", default=True)
+    parser.add_argument("--CPU", type=bool, required=False, help="Force Torch calculations on CPU, should only be set True for testing time, default False", default=False)
 
     args = parser.parse_args()
 
     p12 = args.p12
     H4_threshold = args.H4
+    silent = args.silent
 
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-        chunk_size = 1000
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
-        chunk_size = 100
-    else:
+    IO_time = 0
+    coloc_time = 0
+
+    if args.CPU:
         device = torch.device("cpu")
         chunk_size = 100
+    else:
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+            chunk_size = 1000
+        elif torch.backends.mps.is_available():
+            device = torch.device("mps")
+            chunk_size = 100
+        else:
+            device = torch.device("cpu")
+            chunk_size = 100
 
     for root, dirs, _ in os.walk(args.dir1):
         for directory in tqdm(dirs, desc="chromosomes"):
@@ -323,6 +336,8 @@ def main():
 
                 dir1_cache = {}
 
+                start = time.time()
+
                 for i in range(len(dir1_files)):
                     pf = pq.ParquetFile(
                         os.path.join(dir1_path, dir1_files[i]),
@@ -333,7 +348,12 @@ def main():
                     table = pf.read()
                     dir1_cache[i] = table.to_pandas()
 
+                end = time.time()
+                IO_time += end - start
+
                 for j in range(len(dir2_files)):
+                    start = time.time()
+
                     pf = pq.ParquetFile(
                         os.path.join(dir2_path, dir2_files[j]),
                         thrift_string_size_limit=2**31-1,
@@ -341,6 +361,9 @@ def main():
                     )
 
                     table = pf.read().to_pandas()
+
+                    end = time.time()
+                    IO_time += end - start
 
                     metadata2 = table.iloc[:, :6].copy()  
                     mat2 = table.iloc[:, 6:].copy()
@@ -361,6 +384,8 @@ def main():
                         if max_pos_1 < min_pos_2 or max_pos_2 < min_pos_1:
                             continue
 
+                        start = time.time()
+
                         final_results, n_tests = coloc_loop(
                             mat1=mat1,
                             mat2=mat2,
@@ -376,6 +401,9 @@ def main():
                             p12=p12,
                             H4_threshold=H4_threshold,
                         )
+
+                        end = time.time()
+                        coloc_time += end - start
                         
                         output_file=args.results
 
@@ -390,7 +418,11 @@ def main():
                 print(f"Error while using files from {dir2_path}: {e}")
                 continue
 
-    print(f"{n_tests} pairs tested for colocalisation")
+    if not silent:
+        print(f"{n_tests} pairs tested for colocalisation")
+        print(f"IO time: {IO_time}")
+        print(f"coloc time: {coloc_time}")  
+        print(f"Total elapsed time: {time.time() - run_start}")  
 
 if __name__ == "__main__":
     main()
