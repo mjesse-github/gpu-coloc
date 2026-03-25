@@ -301,7 +301,6 @@ def main():
     parser.add_argument("--H4", type=float, required=False, help="Threshold for H4, e.g. 0.8", default=0.8)
     parser.add_argument("--verbose", action="store_true", help="Print timing and test info")
     parser.add_argument("--CPU", action="store_true", help="Force Torch calculations on CPU")
-    parser.add_argument("--custom_chunk", action="store_true", help="should have custom chunk size, not reccomended")
     parser.add_argument("--chunk_size", type=int, required=False, help="number of signals in a chunk", default= 1000)
 
     args = parser.parse_args()
@@ -314,20 +313,15 @@ def main():
 
     if args.CPU:
         device = torch.device("cpu")
-        chunk_size = 100
     else:
         if torch.cuda.is_available():
             device = torch.device("cuda")
-            chunk_size = 1000
         elif torch.backends.mps.is_available():
             device = torch.device("mps")
-            chunk_size = 100
         else:
             device = torch.device("cpu")
-            chunk_size = 100
 
-    if args.custom_chunk:
-        chunk_size = args.chunk_size
+    chunk_size = args.chunk_size
 
     if args.verbose:
         print(f"using {device} backend")
