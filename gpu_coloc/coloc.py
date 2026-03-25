@@ -301,6 +301,8 @@ def main():
     parser.add_argument("--H4", type=float, required=False, help="Threshold for H4, e.g. 0.8", default=0.8)
     parser.add_argument("--verbose", action="store_true", help="Print timing and test info")
     parser.add_argument("--CPU", action="store_true", help="Force Torch calculations on CPU")
+    parser.add_argument("--custom_chunk", action="store_true", help="should have custom chunk size, not reccomended")
+    parser.add_argument("--chunk_size", type=int, required=False, help="number of signals in a chunk", default= 1000)
 
     args = parser.parse_args()
 
@@ -323,6 +325,14 @@ def main():
         else:
             device = torch.device("cpu")
             chunk_size = 100
+
+    if args.custom_chunk:
+        chunk_size = args.chunk_size
+
+    if args.verbose:
+        print(f"using {device} backend")
+        print(f"threads: {torch.get_num_threads()}")
+        print(f"signals in a chunk: {chunk_size}")
 
     for root, dirs, _ in os.walk(args.dir1):
         for directory in tqdm(dirs, desc="chromosomes"):
@@ -350,7 +360,7 @@ def main():
                 end = time.time()
                 IO_time += end - start
 
-                for j in range(len(dir2_files)):
+                for j in tqdm(range(len(dir2_files)), desc="processing outer files", leave=False):
                     start = time.time()
 
                     pf = pq.ParquetFile(
