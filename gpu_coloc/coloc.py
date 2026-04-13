@@ -147,27 +147,56 @@ def trim(bf1, bf2, p1=1e-4, p2=1e-4, overlap_min=0.5, silent=True):
             print("No common SNPs found.")
         return pd.DataFrame({'nsnps': [np.nan]})
     
-    pp1 = logbf_to_pp(bf1, p1, last_is_null=True)
-    pp2 = logbf_to_pp(bf2, p2, last_is_null=True)
+    # pp1 = logbf_to_pp(bf1, p1, last_is_null=True)
+    # pp2 = logbf_to_pp(bf2, p2, last_is_null=True)
+
+    pp1 = logbf_to_pp(bf1, p1, last_is_null=True).values
+    pp2 = logbf_to_pp(bf2, p2, last_is_null=True).values
 
     bf1 = bf1[isnps]
     bf2 = bf2[isnps]
 
-    prop1 = pp1[isnps].sum(axis=1) / pp1.loc[:, pp1.columns != "null"].sum(axis=1)
+    pad_threshold=-100_000
 
-    prop2 = pp2[isnps].sum(axis=1) / pp2.loc[:, pp2.columns != "null"].sum(axis=1)
+    real1 = (bf1.values > pad_threshold).astype(np.float64)  
+    real2 = (bf2.values > pad_threshold).astype(np.float64) 
 
-    todo = pd.DataFrame([(i, j) for i in range(bf1.shape[0]) for j in range(bf2.shape[0])], columns=['i', 'j'])
+    denom1 = (pp1 * real1).sum(axis=1, keepdims=True)
+    denom2 = (pp2 * real2).sum(axis=1, keepdims=True)
 
-    drop = [prop1[todo['i'][k]] < overlap_min or prop2[todo['j'][k]] < overlap_min for k in range(len(todo))]
+    num1 = (pp1 * real1) @ real2.T 
+    num2 = real1 @ (pp2 * real2).T  
 
-    if all(drop):
+    # guard against zero denom (signal with no real SNPs in shared set)
+    with np.errstate(invalid='ignore', divide='ignore'):
+        prop1 = np.where(denom1 > 0, num1 / denom1, 0.0)  # (N, K)
+        prop2 = np.where(denom2.T > 0, num2 / denom2.T, 0.0)
+
+    keep = (prop1 >= overlap_min) & (prop2 >= overlap_min)  # (N, K)
+
+    if not keep.any():
         if not silent:
-            print("Warning: SNP overlap too small between datasets: too few SNPs with high posterior in one trait represented in other")
-
+            print("Warning: SNP overlap too small between datasets.")
         return pd.DataFrame({'nsnps': [np.nan]})
 
-    return todo[~pd.Series(drop)].reset_index(drop=True)
+    ii, jj = np.where(keep)
+    return pd.DataFrame({'i': ii, 'j': jj})
+
+    # prop1 = pp1[isnps].sum(axis=1) / pp1.loc[:, pp1.columns != "null"].sum(axis=1)
+
+    # prop2 = pp2[isnps].sum(axis=1) / pp2.loc[:, pp2.columns != "null"].sum(axis=1)
+
+    # todo = pd.DataFrame([(i, j) for i in range(bf1.shape[0]) for j in range(bf2.shape[0])], columns=['i', 'j'])
+
+    # drop = [prop1[todo['i'][k]] < overlap_min or prop2[todo['j'][k]] < overlap_min for k in range(len(todo))]
+
+    # if all(drop):
+    #     if not silent:
+    #         print("Warning: SNP overlap too small between datasets: too few SNPs with high posterior in one trait represented in other")
+
+    #     return pd.DataFrame({'nsnps': [np.nan]})
+
+    # return todo[~pd.Series(drop)].reset_index(drop=True)
 
 def coloc_loop(
     mat1: pd.DataFrame,
