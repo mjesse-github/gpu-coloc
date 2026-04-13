@@ -65,7 +65,7 @@ def process_group(meta_group, index, chrom, chrom_dir, group_id=None):
     
     return index + 1
 
-def create_parquet(meta_sub, index, chrom, chrom_dir):
+def create_parquet(meta_sub, index, chrom, chrom_dir, chunk_size):
     meta_sub.sort_values(by="location_min", inplace=True)
     positions = meta_sub["location_min"].tolist()
 
@@ -77,14 +77,13 @@ def create_parquet(meta_sub, index, chrom, chrom_dir):
                 split_point = positions_sorted[i - 1] 
                 df_part1 = meta_sub[meta_sub["location_min"] <= split_point].copy()
                 df_part2 = meta_sub[meta_sub["location_min"] > split_point].copy()
-                index = create_parquet(df_part1, index, chrom, chrom_dir)
-                index = create_parquet(df_part2, index, chrom, chrom_dir)
+                index = create_parquet(df_part1, index, chrom, chrom_dir, chunk_size)
+                index = create_parquet(df_part2, index, chrom, chrom_dir, chunk_size)
                 return index
 
-    if len(meta_sub) > 1000:
+    if len(meta_sub) > chunk_size:
         signals = meta_sub.index.tolist()
         total = len(signals)
-        chunk_size = 1000
         n_groups = math.ceil(total / chunk_size)
         for group in range(n_groups):
             start = group * chunk_size
@@ -99,13 +98,14 @@ def create_parquet(meta_sub, index, chrom, chrom_dir):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Process signals with recursive gap splitting (>500k) and chunking (max 1000 signals)"
+        description="Process signals with recursive gap splitting and chunking (default 1000 signals)"
     )
     parser.add_argument("--input", type=str, required=True, help="Directory containing signal pickle files")
     parser.add_argument("--output", type=str, required=True, help="Directory to save parquet files")
     parser.add_argument("--input_summary", type=str, required=True, help="Path to summary TSV file")
     parser.add_argument("--output_summary", type=str, help="Path to write parquet summary TSV")
     parser.add_argument("--input_type", type=str, help="Type of input files ('pickle' or 'feather')", default="pickle", choices=["pickle", "feather"])
+    parser.add_argument("--chunk_size", type=int, help="Chunk size of output parquet files", default=1000)
 
     args = parser.parse_args()
 
@@ -114,6 +114,8 @@ def main():
 
     global input_type
     input_type = args.input_type
+
+    chunk_size = args.chunk_size
 
     os.makedirs(args.output, exist_ok=True)
     metadata = pd.read_csv(args.input_summary, sep="\t", usecols=["signal","chromosome","location_min","location_max","signal_strength","lead_variant"])
@@ -128,7 +130,7 @@ def main():
         meta_sub = metadata[metadata["chromosome"] == chrom].copy()
         meta_sub.set_index("signal", inplace=True)
         meta_sub.sort_values(by="location_min", inplace=True)
-        group_index = create_parquet(meta_sub, group_index, chrom, chrom_dir)
+        group_index = create_parquet(meta_sub, group_index, chrom, chrom_dir, chunk_size)
 
     if args.output_summary:
         pd.DataFrame(parquet_records).to_csv(args.output_summary, sep="\t", index=False)

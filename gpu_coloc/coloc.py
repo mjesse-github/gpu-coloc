@@ -180,6 +180,7 @@ def coloc_loop(
     num_chunks2=0,
     device="cuda",
     p1=1e-4, p2=1e-4, p12=1e-6, H4_threshold=0.8,
+    get_NA_results=False
 ):
 
     try:
@@ -252,7 +253,8 @@ def coloc_loop(
 
         n_tests+=summary_df.shape[0]
 
-        summary_df = summary_df[summary_df["PP.H4"] >= H4_threshold].reset_index(drop=True)
+        if not get_NA_results:
+            summary_df = summary_df[summary_df["PP.H4"] >= H4_threshold].reset_index(drop=True)
 
         if summary_df.empty:
             continue
@@ -302,11 +304,13 @@ def main():
     parser.add_argument("--verbose", action="store_true", help="Print timing and test info")
     parser.add_argument("--CPU", action="store_true", help="Force Torch calculations on CPU")
     parser.add_argument("--chunk_size", type=int, required=False, help="number of signals in a chunk", default= 1000)
+    parser.add_argument("--get_NA_results", action="store_true", help="Include NA and various results")
 
     args = parser.parse_args()
 
     p12 = args.p12
     H4_threshold = args.H4
+    get_NA_results = args.get_NA_results
 
     IO_time = 0
     coloc_time = 0
@@ -403,6 +407,7 @@ def main():
                             p2=1e-4,
                             p12=p12,
                             H4_threshold=H4_threshold,
+                            get_NA_results=get_NA_results
                         )
 
                         end = time.time()
