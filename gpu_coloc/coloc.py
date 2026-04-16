@@ -150,8 +150,8 @@ def trim(bf1, bf2, p1=1e-4, p2=1e-4, overlap_min=0.5, silent=True):
     # pp1 = logbf_to_pp(bf1, p1, last_is_null=True)
     # pp2 = logbf_to_pp(bf2, p2, last_is_null=True)
 
-    pp1 = logbf_to_pp(bf1, p1, last_is_null=True).values
-    pp2 = logbf_to_pp(bf2, p2, last_is_null=True).values
+    pp1 = logbf_to_pp(bf1, p1, last_is_null=True)[isnps].values
+    pp2 = logbf_to_pp(bf2, p2, last_is_null=True)[isnps].values
 
     bf1 = bf1[isnps]
     bf2 = bf2[isnps]
@@ -209,18 +209,25 @@ def coloc_loop(
     num_chunks2=0,
     device="cuda",
     p1=1e-4, p2=1e-4, p12=1e-6, H4_threshold=0.8,
-    get_NA_results=False
+    get_NA_results=False,
+    coloc_time=0
 ):
 
     try:
+        start = time.time()
+
         overlapping_pairs = trim(mat1, mat2)
+
+        end = time.time()
+        coloc_time += end - start
+
         valid_pairs = set(overlapping_pairs[["i", "j"]].itertuples(index=False, name=None))
     except:
         # print("Possible error in trim function")
-        return pd.DataFrame(), n_tests
+        return pd.DataFrame(), n_tests, coloc_time
 
     if overlapping_pairs.empty:
-        return pd.DataFrame(), n_tests
+        return pd.DataFrame(), n_tests, coloc_time
     
     mat1_chunks = []
     meta1_chunks = []
@@ -261,12 +268,19 @@ def coloc_loop(
             total_pairs.append((i, j))
 
     for pair in tqdm(total_pairs, desc="All chunk pairs", leave=False):    
+
+        start = time.time()
+
         out = coloc_bf_bf_torch(
             bf1_cpu=mat1_chunks[pair[0]],
             bf2_cpu=mat2_chunks[pair[1]],
             p1=p1, p2=p2, p12=p12,
             device=device
         )
+
+        end = time.time()
+        coloc_time += end - start
+
         if out is None or out["summary"] is None:
             continue
 
@@ -316,7 +330,7 @@ def coloc_loop(
     else:
         final_df = pd.DataFrame()
 
-    return final_df, n_tests
+    return final_df, n_tests, coloc_time
 
 def main():
     run_start = time.time()
@@ -420,9 +434,9 @@ def main():
                         if max_pos_1 < min_pos_2 or max_pos_2 < min_pos_1:
                             continue
 
-                        start = time.time()
+                        # start = time.time()
 
-                        final_results, n_tests = coloc_loop(
+                        final_results, n_tests, coloc_time = coloc_loop(
                             mat1=mat1,
                             mat2=mat2,
                             metadata1=metadata1,
@@ -436,11 +450,12 @@ def main():
                             p2=1e-4,
                             p12=p12,
                             H4_threshold=H4_threshold,
-                            get_NA_results=get_NA_results
+                            get_NA_results=get_NA_results,
+                            coloc_time=coloc_time
                         )
 
-                        end = time.time()
-                        coloc_time += end - start
+                        # end = time.time()
+                        # coloc_time += end - start
                         
                         output_file=args.results
 
