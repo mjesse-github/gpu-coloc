@@ -135,6 +135,7 @@ def logbf_to_pp(df, pi, last_is_null):
     return pd.DataFrame(result, index=df.index, columns=df.columns)
 
 def trim(bf1, bf2, p1=1e-4, p2=1e-4, overlap_min=0.5, silent=True):
+
     if isinstance(bf1, pd.Series):
         bf1 = bf1.to_frame().T
     if isinstance(bf2, pd.Series):
@@ -147,29 +148,25 @@ def trim(bf1, bf2, p1=1e-4, p2=1e-4, overlap_min=0.5, silent=True):
             print("No common SNPs found.")
         return pd.DataFrame({'nsnps': [np.nan]})
     
-    # pp1 = logbf_to_pp(bf1, p1, last_is_null=True)
-    # pp2 = logbf_to_pp(bf2, p2, last_is_null=True)
+    pp1_full = logbf_to_pp(bf1, p1, last_is_null=True)
+    pp2_full = logbf_to_pp(bf2, p2, last_is_null=True)
 
-    pp1 = logbf_to_pp(bf1, p1, last_is_null=True)[isnps].values
-    pp2 = logbf_to_pp(bf2, p2, last_is_null=True)[isnps].values
+    denom1 = pp1_full.loc[:, pp1_full.columns != "null"].sum(axis=1).values.reshape(-1, 1)
+    denom2 = pp2_full.loc[:, pp2_full.columns != "null"].sum(axis=1).values.reshape(-1, 1)
 
-    bf1 = bf1[isnps]
-    bf2 = bf2[isnps]
+    pad_threshold = -100_000
+    
+    pp1_shared = pp1_full[isnps].values
+    pp2_shared = pp2_full[isnps].values
+    
+    real1_shared = (bf1[isnps].values > pad_threshold).astype(np.float64)
+    real2_shared = (bf2[isnps].values > pad_threshold).astype(np.float64)
 
-    pad_threshold=-100_000
+    num1 = (pp1_shared * real1_shared) @ real2_shared.T
+    num2 = real1_shared @ (pp2_shared * real2_shared).T
 
-    real1 = (bf1.values > pad_threshold).astype(np.float64)  
-    real2 = (bf2.values > pad_threshold).astype(np.float64) 
-
-    denom1 = (pp1 * real1).sum(axis=1, keepdims=True)
-    denom2 = (pp2 * real2).sum(axis=1, keepdims=True)
-
-    num1 = (pp1 * real1) @ real2.T 
-    num2 = real1 @ (pp2 * real2).T  
-
-    # guard against zero denom (signal with no real SNPs in shared set)
     with np.errstate(invalid='ignore', divide='ignore'):
-        prop1 = np.where(denom1 > 0, num1 / denom1, 0.0)  # (N, K)
+        prop1 = np.where(denom1 > 0, num1 / denom1, 0.0)
         prop2 = np.where(denom2.T > 0, num2 / denom2.T, 0.0)
 
     keep = (prop1 >= overlap_min) & (prop2 >= overlap_min)  # (N, K)
@@ -181,22 +178,6 @@ def trim(bf1, bf2, p1=1e-4, p2=1e-4, overlap_min=0.5, silent=True):
 
     ii, jj = np.where(keep)
     return pd.DataFrame({'i': ii, 'j': jj})
-
-    # prop1 = pp1[isnps].sum(axis=1) / pp1.loc[:, pp1.columns != "null"].sum(axis=1)
-
-    # prop2 = pp2[isnps].sum(axis=1) / pp2.loc[:, pp2.columns != "null"].sum(axis=1)
-
-    # todo = pd.DataFrame([(i, j) for i in range(bf1.shape[0]) for j in range(bf2.shape[0])], columns=['i', 'j'])
-
-    # drop = [prop1[todo['i'][k]] < overlap_min or prop2[todo['j'][k]] < overlap_min for k in range(len(todo))]
-
-    # if all(drop):
-    #     if not silent:
-    #         print("Warning: SNP overlap too small between datasets: too few SNPs with high posterior in one trait represented in other")
-
-    #     return pd.DataFrame({'nsnps': [np.nan]})
-
-    # return todo[~pd.Series(drop)].reset_index(drop=True)
 
 def coloc_loop(
     mat1: pd.DataFrame,
