@@ -109,75 +109,74 @@ def logsum(arr):
     max_val = np.max(arr)
     return max_val + np.log(np.sum(np.exp(arr - max_val)))
 
-def logbf_to_pp(df, pi, last_is_null):
-    n = df.shape[1] - 1 if last_is_null else df.shape[1]
-    
-    if isinstance(pi, (int, float)):
-        if pi > 1 / n:
-            pi = 1 / n
-        pi = np.append(np.repeat(pi, n), 1 - n * pi) if last_is_null else np.repeat(pi, n)
-    
-    if any(pi == 0):
-        pi[pi == 0] = 1e-16
-        pi = pi / np.sum(pi)
-    
-    if last_is_null:
-        df = df.subtract(df.iloc[:, -1], axis=0)
-    
-    priors = np.tile(np.log(pi), (df.shape[0], 1))
-    
-    denom = np.apply_along_axis(logsum, 1, df.values + priors)
-    
-    denom_df = pd.DataFrame(np.tile(denom, (df.shape[1], 1)).T, index=df.index, columns=df.columns)
-    
-    result = np.exp(df.values + priors - denom_df.values)
-    
-    return pd.DataFrame(result, index=df.index, columns=df.columns)
+def logbf_to_pp_masked(df, real_nn_mask, p, last_is_null=True):
+    """pp matrix using per-row priors pi_i = min(p, 1/n_real_i)."""
+    bf = df.values.astype(np.float64, copy=True)
+    cols = df.columns.values
 
-def trim(bf1, bf2, p1=1e-4, p2=1e-4, overlap_min=0.5, silent=True):
+    null_present = last_is_null and (cols == "null").any()
+    if null_present:
+        null_idx = int(np.where(cols == "null")[0][0])
+        bf = bf - bf[:, null_idx:null_idx+1]                      # rescale so null = 0
 
-    if isinstance(bf1, pd.Series):
-        bf1 = bf1.to_frame().T
-    if isinstance(bf2, pd.Series):
-        bf2 = bf2.to_frame().T
+    n_real = np.maximum(real_nn_mask.sum(axis=1, keepdims=True), 1.0)   # (M, 1)
+    pi_i   = np.minimum(p, 1.0 / n_real)                               # (M, 1)
 
-    isnps = list(set(bf1.columns).intersection(set(bf2.columns)).difference(['null']))
+    log_priors = np.broadcast_to(np.log(pi_i), bf.shape).copy()
+    if null_present:
+        pi_null = np.clip(1.0 - n_real * pi_i, 1e-16, None)
+        log_priors[:, null_idx] = np.log(pi_null)[:, 0]
 
+    z = bf + log_priors
+    z_max = z.max(axis=1, keepdims=True)
+    pp = np.exp(z - (z_max + np.log(np.exp(z - z_max).sum(axis=1, keepdims=True))))
+    return pd.DataFrame(pp, index=df.index, columns=df.columns)
+
+
+def trim(bf1, bf2, overlap_min=0.5, pad_threshold=-100_000):
+    if isinstance(bf1, pd.Series): bf1 = bf1.to_frame().T
+    if isinstance(bf2, pd.Series): bf2 = bf2.to_frame().T
+
+    isnps = sorted(set(bf1.columns) & set(bf2.columns))
     if not isnps:
-        if not silent:
-            print("No common SNPs found.")
-        return pd.DataFrame({'nsnps': [np.nan]})
-    
-    pp1_full = logbf_to_pp(bf1, p1, last_is_null=True)
-    pp2_full = logbf_to_pp(bf2, p2, last_is_null=True)
+        return pd.DataFrame({"nsnps": [np.nan]})
 
-    denom1 = pp1_full.loc[:, pp1_full.columns != "null"].sum(axis=1).values.reshape(-1, 1)
-    denom2 = pp2_full.loc[:, pp2_full.columns != "null"].sum(axis=1).values.reshape(-1, 1)
+    bf1_nn = bf1.values.astype(np.float64)                  # (N, S1)
+    bf2_nn = bf2.values.astype(np.float64)                  # (K, S2)
+    bf1_sh = bf1[isnps].values.astype(np.float64)           # (N, S)
+    bf2_sh = bf2[isnps].values.astype(np.float64)           # (K, S)
 
-    pad_threshold = -100_000
-    
-    pp1_shared = pp1_full[isnps].values
-    pp2_shared = pp2_full[isnps].values
-    
-    real1_shared = (bf1[isnps].values > pad_threshold).astype(np.float64)
-    real2_shared = (bf2[isnps].values > pad_threshold).astype(np.float64)
+    real1_nn = bf1_nn > pad_threshold
+    real2_nn = bf2_nn > pad_threshold
+    real1_sh = bf1_sh > pad_threshold                       # (N, S)
+    real2_sh = bf2_sh > pad_threshold                       # (K, S)
 
-    num1 = (pp1_shared * real1_shared) @ real2_shared.T
-    num2 = real1_shared @ (pp2_shared * real2_shared).T
+    m1 = np.where(real1_nn, bf1_nn, -np.inf).max(axis=1, keepdims=True)
+    m2 = np.where(real2_nn, bf2_nn, -np.inf).max(axis=1, keepdims=True)
 
-    with np.errstate(invalid='ignore', divide='ignore'):
-        prop1 = np.where(denom1 > 0, num1 / denom1, 0.0)
+    e1_nn = np.where(real1_nn, np.exp(bf1_nn - m1), 0.0)
+    e2_nn = np.where(real2_nn, np.exp(bf2_nn - m2), 0.0)
+    e1_sh = np.where(real1_sh, np.exp(bf1_sh - m1), 0.0)    # (N, S)
+    e2_sh = np.where(real2_sh, np.exp(bf2_sh - m2), 0.0)    # (K, S)
+
+    denom1 = e1_nn.sum(axis=1, keepdims=True)               # (N, 1)
+    denom2 = e2_nn.sum(axis=1, keepdims=True)               # (K, 1)
+
+    r2f = real2_sh.astype(np.float64)
+    r1f = real1_sh.astype(np.float64)
+    num1 = e1_sh @ r2f.T                                    # (N, K)
+    num2 = r1f @ e2_sh.T                                    # (N, K)
+
+    with np.errstate(invalid="ignore", divide="ignore"):
+        prop1 = np.where(denom1   > 0, num1 / denom1,   0.0)
         prop2 = np.where(denom2.T > 0, num2 / denom2.T, 0.0)
 
-    keep = (prop1 >= overlap_min) & (prop2 >= overlap_min)  # (N, K)
-
+    keep = (prop1 >= overlap_min) & (prop2 >= overlap_min)
     if not keep.any():
-        if not silent:
-            print("Warning: SNP overlap too small between datasets.")
-        return pd.DataFrame({'nsnps': [np.nan]})
+        return pd.DataFrame({"nsnps": [np.nan]})
 
     ii, jj = np.where(keep)
-    return pd.DataFrame({'i': ii, 'j': jj})
+    return pd.DataFrame({"i": ii, "j": jj})
 
 def coloc_loop(
     mat1: pd.DataFrame,

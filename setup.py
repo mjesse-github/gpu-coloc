@@ -5,7 +5,7 @@ long_description = (this_directory / "README.md").read_text()
 
 setup(
     name="gpu-coloc",
-    version="0.5.8" \
+    version="0.6.0" \
     "",
     packages=find_packages(),
     license="MIT",
