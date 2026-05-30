@@ -1,6 +1,6 @@
 # gpu-coloc
 
-**gpu-coloc** is an accelerated implementation of the coloc Bayesian colocalization algorithm, delivering identical results to R's `coloc.bf_bf` approximately 1000 times faster (Also on CPUs!). For GPU-acceleration Torch support is required, thus `gpu-coloc` can be used on M-series Mac(book)s and machines with NVIDIA GPUs.
+**gpu-coloc** is an accelerated implementation of the coloc.bf_bf Bayesian colocalization algorithm ([Chris Wallace, "A more accurate method for colocalisation analysis allowing for multiple causal variants", PLOS Genetics, 2021](doi.org/10.1371/journal.pgen.1009440), [coloc GitHub](https://github.com/chr1swallace/coloc)), delivering identical results to R's `coloc.bf_bf` approximately 1000 times faster (Also on CPUs!). For GPU-acceleration Torch support is required, thus `gpu-coloc` can be used on M-series Mac(book)s and machines with NVIDIA GPUs.
 
 If you have any questions or problems with `gpu-coloc`, please write to `mihkel.jesse@gmail.com`.
 
