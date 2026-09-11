@@ -1,6 +1,6 @@
 # gpu-coloc
 
-**gpu-coloc** is an accelerated implementation of the coloc.bf_bf Bayesian colocalization algorithm ([Chris Wallace, "A more accurate method for colocalisation analysis allowing for multiple causal variants", PLOS Genetics, 2021](https://doi.org/10.1371/journal.pgen.1009440), [coloc GitHub](https://github.com/chr1swallace/coloc)), delivering identical results to R's `coloc.bf_bf` approximately 1000 times faster (Also on CPUs!). For GPU-acceleration Torch support is required, thus `gpu-coloc` can be used on M-series Mac(book)s and machines with NVIDIA GPUs.
+**gpu-coloc** is an accelerated implementation of the coloc.bf_bf Bayesian colocalization algorithm ([Chris Wallace, "A more accurate method for colocalisation analysis allowing for multiple causal variants", PLOS Genetics, 2021](https://doi.org/10.1371/journal.pgen.1009440), [coloc GitHub](https://github.com/chr1swallace/coloc)), delivering identical results to R's `coloc.bf_bf` approximately 1000 times faster (Also on CPUs! For this use the flad `--CPU`). For GPU-acceleration Torch support is required, thus `gpu-coloc` can be used on M-series Mac(book)s and machines with NVIDIA GPUs.
 
 If you have any questions or problems with `gpu-coloc`, please write to `mihkel.jesse@gmail.com`.
 
@@ -109,3 +109,11 @@ gpu-coloc --run --dir1 [formatted_dataset_1] --dir2 [formatted_dataset_2] --resu
 - `--results` (required): Path to the output file where colocalization results will be saved.
 - `--p12` (optional): Prior probability that a variant is associated with both traits. Default: `1e-6`.
 - `--H4` (optional): Posterior probability threshold for declaring colocalization (H4). Default: `0.8`.
+
+### Experimental full-locus CLPP/CLPA calculation 
+
+This is an experimental flag, which is inspired from [FinnGen](https://docs.finngen.fi/finngen-data-specifics/green-library-data-aggregate-data/other-analyses-available/colocalizations), to include full-locus calculation based of gpu-coloc matrices for both CLPP and CLPA scores. The CLPP and PP.H4 scores are equivalent, where in essence the `p12` prior makes PP.H4 more "optimistic". The CLPA score is proposed by FinnGen (they use use it on credible sets not any locus) and is the sum of the smallest PIP scores over shared variants. This implementation of CLPP and CLPA works on both fine mapped and not fine mapped (ABF/single causal variant) traits and similiarily requires gpu-coloc input matrices. The current intution for usage of CLPA is to check if the CLPA is low, but PP.H4 is high, then there is likely a high degree of missingness between the datasets or something might need rechecking.
+
+```bash
+gpu-coloc -c --dir1 [formatted_dataset_1] --dir2 [formatted_dataset_2] --results [results_output]
+```
