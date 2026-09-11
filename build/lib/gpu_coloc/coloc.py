@@ -1,0 +1,462 @@
+import argparse
+import math
+import os
+import torch
+import pandas as pd
+import numpy as np
+from tqdm import tqdm
+import pyarrow.parquet as pq
+import time
+
+def logdiff_torch(a, b):
+    mx = torch.maximum(a, b)
+    val = torch.exp(a - mx) - torch.exp(b - mx)
+    mask = (val <= 0)
+    out = mx + torch.log(torch.where(mask, torch.tensor(float('nan'), device=a.device), val))
+    out[mask] = float('nan')
+    return out
+
+def coloc_bf_bf_torch(
+    bf1_cpu, bf2_cpu,
+    p1=1e-4, p2=1e-4, p12=5e-6,
+    device="mps"
+):
+    if isinstance(bf1_cpu, pd.Series):
+        bf1_cpu = bf1_cpu.to_frame().T
+    if isinstance(bf2_cpu, pd.Series):
+        bf2_cpu = bf2_cpu.to_frame().T
+
+    isnps = list(set(bf1_cpu.columns).intersection(bf2_cpu.columns) - {"null"})
+    if not isnps:
+        return {
+            "summary": pd.DataFrame({"nsnps": [np.nan]}),
+            "pp_3d": None,
+            "pp_H4_matrix": None,
+            "priors": {"p1": p1, "p2": p2, "p12": p12}
+        }
+
+    bf1_arr = torch.tensor(bf1_cpu[isnps].values, dtype=torch.float32, device=device)
+    bf2_arr = torch.tensor(bf2_cpu[isnps].values, dtype=torch.float32, device=device)
+
+    N, M = bf1_arr.shape
+    K, _ = bf2_arr.shape
+
+    # bf1_3d = bf1_arr.unsqueeze(1) 
+    # bf2_3d = bf2_arr.unsqueeze(0) 
+    # sum_3d = bf1_3d + bf2_3d 
+
+    # sum_3d_logexp = torch.logsumexp(sum_3d, dim=2)  
+
+    a_max = bf1_arr.max(dim=1, keepdim=True).values        
+    b_max = bf2_arr.max(dim=1, keepdim=True).values         
+
+    A = torch.exp(bf1_arr - a_max)                           
+    B = torch.exp(bf2_arr - b_max)                            
+    S = A @ B.t()                                       
+
+    sum_3d_logexp = (a_max + b_max.t()) + torch.log(S.clamp_min(1e-45)) 
+
+    l1_sum = torch.logsumexp(bf1_arr, dim=1)  
+    l2_sum = torch.logsumexp(bf2_arr, dim=1)  
+
+    l1_sum_2d = l1_sum.unsqueeze(1).expand(N, K)
+    l2_sum_2d = l2_sum.unsqueeze(0).expand(N, K)
+
+    p1_t  = torch.tensor(p1,  dtype=torch.float32, device=device)
+    p2_t  = torch.tensor(p2,  dtype=torch.float32, device=device)
+    p12_t = torch.tensor(p12, dtype=torch.float32, device=device)
+
+    lH0_2d = torch.zeros((N, K), device=device)
+    lH1_2d = torch.log(p1_t) + l1_sum_2d
+    lH2_2d = torch.log(p2_t) + l2_sum_2d
+    lH4_2d = torch.log(p12_t) + sum_3d_logexp
+    lH3_2d = torch.log(p1_t) + torch.log(p2_t) + logdiff_torch(l1_sum_2d + l2_sum_2d, sum_3d_logexp)
+
+    all_abf_3d = torch.stack([lH0_2d, lH1_2d, lH2_2d, lH3_2d, lH4_2d], dim=0) 
+    denom_2d   = torch.logsumexp(all_abf_3d, dim=0)                           
+    pp_abf_3d  = torch.exp(all_abf_3d - denom_2d.unsqueeze(0))             
+
+    pp_H3_2d = pp_abf_3d[3]  
+    pp_H4_2d = pp_abf_3d[4]  
+
+    i_coords = torch.arange(N, device=device).unsqueeze(1).expand(N, K).flatten() 
+    j_coords = torch.arange(K, device=device).unsqueeze(0).expand(N, K).flatten() 
+
+    pp_H3_flat        = pp_H3_2d.flatten()
+    pp_H4_flat        = pp_H4_2d.flatten()
+
+    i_coords_cpu    = i_coords.cpu().numpy()
+    j_coords_cpu    = j_coords.cpu().numpy()
+    pp_H3_cpu       = pp_H3_flat.cpu().numpy()
+    pp_H4_cpu       = pp_H4_flat.cpu().numpy()
+
+    summary_df = pd.DataFrame({
+        "idx1": i_coords_cpu,
+        "idx2": j_coords_cpu,
+        "PP.H3": pp_H3_cpu,
+        "PP.H4": pp_H4_cpu,
+    })
+
+    return {
+        "summary": summary_df,
+        # "pp_3d": pp_abf_3d.cpu().numpy(),
+        # "pp_H4_matrix": pp_H4_2d.cpu().numpy(),
+        # "priors": {"p1": p1, "p2": p2, "p12": p12}
+    }
+
+
+def logsum(arr):
+    max_val = np.max(arr)
+    return max_val + np.log(np.sum(np.exp(arr - max_val)))
+
+def logbf_to_pp_masked(df, real_nn_mask, p, last_is_null=True):
+    """pp matrix using per-row priors pi_i = min(p, 1/n_real_i)."""
+    bf = df.values.astype(np.float64, copy=True)
+    cols = df.columns.values
+
+    null_present = last_is_null and (cols == "null").any()
+    if null_present:
+        null_idx = int(np.where(cols == "null")[0][0])
+        bf = bf - bf[:, null_idx:null_idx+1]                      # rescale so null = 0
+
+    n_real = np.maximum(real_nn_mask.sum(axis=1, keepdims=True), 1.0)   # (M, 1)
+    pi_i   = np.minimum(p, 1.0 / n_real)                               # (M, 1)
+
+    log_priors = np.broadcast_to(np.log(pi_i), bf.shape).copy()
+    if null_present:
+        pi_null = np.clip(1.0 - n_real * pi_i, 1e-16, None)
+        log_priors[:, null_idx] = np.log(pi_null)[:, 0]
+
+    z = bf + log_priors
+    z_max = z.max(axis=1, keepdims=True)
+    pp = np.exp(z - (z_max + np.log(np.exp(z - z_max).sum(axis=1, keepdims=True))))
+    return pd.DataFrame(pp, index=df.index, columns=df.columns)
+
+
+def trim(bf1, bf2, overlap_min=0.5, pad_threshold=-100_000):
+    if isinstance(bf1, pd.Series): bf1 = bf1.to_frame().T
+    if isinstance(bf2, pd.Series): bf2 = bf2.to_frame().T
+
+    isnps = sorted(set(bf1.columns) & set(bf2.columns))
+    if not isnps:
+        return pd.DataFrame({"nsnps": [np.nan]})
+
+    bf1_nn = bf1.values.astype(np.float64)                  # (N, S1)
+    bf2_nn = bf2.values.astype(np.float64)                  # (K, S2)
+    bf1_sh = bf1[isnps].values.astype(np.float64)           # (N, S)
+    bf2_sh = bf2[isnps].values.astype(np.float64)           # (K, S)
+
+    real1_nn = bf1_nn > pad_threshold
+    real2_nn = bf2_nn > pad_threshold
+    real1_sh = bf1_sh > pad_threshold                       # (N, S)
+    real2_sh = bf2_sh > pad_threshold                       # (K, S)
+
+    m1 = np.where(real1_nn, bf1_nn, -np.inf).max(axis=1, keepdims=True)
+    m2 = np.where(real2_nn, bf2_nn, -np.inf).max(axis=1, keepdims=True)
+
+    e1_nn = np.where(real1_nn, np.exp(bf1_nn - m1), 0.0)
+    e2_nn = np.where(real2_nn, np.exp(bf2_nn - m2), 0.0)
+    e1_sh = np.where(real1_sh, np.exp(bf1_sh - m1), 0.0)    # (N, S)
+    e2_sh = np.where(real2_sh, np.exp(bf2_sh - m2), 0.0)    # (K, S)
+
+    denom1 = e1_nn.sum(axis=1, keepdims=True)               # (N, 1)
+    denom2 = e2_nn.sum(axis=1, keepdims=True)               # (K, 1)
+
+    r2f = real2_sh.astype(np.float64)
+    r1f = real1_sh.astype(np.float64)
+    num1 = e1_sh @ r2f.T                                    # (N, K)
+    num2 = r1f @ e2_sh.T                                    # (N, K)
+
+    with np.errstate(invalid="ignore", divide="ignore"):
+        prop1 = np.where(denom1   > 0, num1 / denom1,   0.0)
+        prop2 = np.where(denom2.T > 0, num2 / denom2.T, 0.0)
+
+    keep = (prop1 >= overlap_min) & (prop2 >= overlap_min)
+    if not keep.any():
+        return pd.DataFrame({"nsnps": [np.nan]})
+
+    ii, jj = np.where(keep)
+    return pd.DataFrame({"i": ii, "j": jj})
+
+def coloc_loop(
+    mat1: pd.DataFrame,
+    mat2: pd.DataFrame,
+    metadata1: pd.DataFrame,
+    metadata2: pd.DataFrame,
+    n_tests,
+    chunk_size=100,
+    num_chunks1=0,
+    num_chunks2=0,
+    device="cuda",
+    p1=1e-4, p2=1e-4, p12=1e-6, H4_threshold=0.8,
+    get_NA_results=False,
+    coloc_time=0
+):
+
+    try:
+        start = time.time()
+
+        overlapping_pairs = trim(mat1, mat2)
+
+        end = time.time()
+        coloc_time += end - start
+
+        valid_pairs = set(overlapping_pairs[["i", "j"]].itertuples(index=False, name=None))
+    except:
+        # print("Possible error in trim function")
+        return pd.DataFrame(), n_tests, coloc_time
+
+    if overlapping_pairs.empty:
+        return pd.DataFrame(), n_tests, coloc_time
+    
+    mat1_chunks = []
+    meta1_chunks = []
+    start1_idx = 0
+
+    N1 = mat1.shape[0]
+
+    for i in range(num_chunks1):
+        end1_idx = start1_idx + chunk_size if i < (num_chunks1 - 1) else N1
+        mat1_chunk = mat1.iloc[start1_idx:end1_idx, :].copy()
+        meta1_chunk = metadata1.iloc[start1_idx:end1_idx, :].copy()
+
+        mat1_chunks.append(mat1_chunk)
+        meta1_chunks.append(meta1_chunk)
+        start1_idx = end1_idx 
+
+    mat2_chunks = []
+    meta2_chunks = []
+    start2_idx = 0
+
+    N2 = mat2.shape[0]
+
+    for i in range(num_chunks2):
+        end2_idx = start2_idx + chunk_size if i < (num_chunks2 - 1) else N2
+        mat2_chunk = mat2.iloc[start2_idx:end2_idx, :].copy()
+        meta2_chunk = metadata2.iloc[start2_idx:end2_idx, :].copy()
+
+        mat2_chunks.append(mat2_chunk)
+        meta2_chunks.append(meta2_chunk)
+        start2_idx = end2_idx
+
+    all_results = []
+
+    total_pairs = []
+
+    for i in range(num_chunks1):
+        for j in range(num_chunks2):
+            total_pairs.append((i, j))
+
+    for pair in tqdm(total_pairs, desc="All chunk pairs", leave=False):    
+
+        start = time.time()
+
+        out = coloc_bf_bf_torch(
+            bf1_cpu=mat1_chunks[pair[0]],
+            bf2_cpu=mat2_chunks[pair[1]],
+            p1=p1, p2=p2, p12=p12,
+            device=device
+        )
+
+        end = time.time()
+        coloc_time += end - start
+
+        if out is None or out["summary"] is None:
+            continue
+
+        summary_df = out["summary"]
+
+        if {"idx1","idx2"} - set(summary_df.columns):
+            continue
+
+        summary_df.loc[:, "idx1"] = summary_df["idx1"] + pair[0] * chunk_size
+        summary_df.loc[:, "idx2"] = summary_df["idx2"] + pair[1] * chunk_size
+
+        summary_df = summary_df[summary_df.apply(lambda row: (row["idx1"], row["idx2"]) in valid_pairs, axis=1)]
+
+        n_tests+=summary_df.shape[0]
+
+        if not get_NA_results:
+            summary_df = summary_df[summary_df["PP.H4"] >= H4_threshold].reset_index(drop=True)
+
+        if summary_df.empty:
+            continue
+
+        summary_df["signal1"] = metadata1["signal"].iloc[
+            summary_df["idx1"]
+        ].values
+
+        summary_df["lead1"] = metadata1["lead_variant"].iloc[
+            summary_df["idx1"]
+        ].values
+
+
+        summary_df["signal2"] = metadata2["signal"].iloc[
+            summary_df["idx2"]
+        ].values
+
+        summary_df["lead2"] = metadata2["lead_variant"].iloc[
+            summary_df["idx2"]
+        ].values
+
+        summary_df = summary_df[summary_df["signal1"] != summary_df["signal2"]].reset_index(drop=True)
+
+        summary_df.drop(columns=["idx1", "idx2"], inplace=True)
+
+        all_results.append(summary_df)
+
+    if all_results:
+        final_df = pd.concat(all_results, ignore_index=True)
+    else:
+        final_df = pd.DataFrame()
+
+    return final_df, n_tests, coloc_time
+
+def main():
+    run_start = time.time()
+
+    n_tests = 0
+
+    parser = argparse.ArgumentParser(description="Run coloc")
+
+    parser.add_argument("--dir1", type=str, required=True, help="First directory of directories of parquet files, e.g., 'formatted_eqtls'.")
+    parser.add_argument("--dir2", type=str, required=True, help="Second directory of directories of parquet files, e.g., 'formatted_metabolites'.")
+    parser.add_argument("--results", type=str, required=True, help="File to write the colocalization results, e.g., 'results.tsv'.")
+    parser.add_argument("--p12", type=float, required=True, help="p12 prior, e.g. 1e-6")
+    parser.add_argument("--H4", type=float, required=False, help="Threshold for H4, e.g. 0.8", default=0.8)
+    parser.add_argument("--verbose", action="store_true", help="Print timing and test info")
+    parser.add_argument("--CPU", action="store_true", help="Force Torch calculations on CPU")
+    parser.add_argument("--chunk_size", type=int, required=False, help="number of signals in a chunk", default= 1000)
+    parser.add_argument("--get_NA_results", action="store_true", help="Include NA and various results")
+
+    args = parser.parse_args()
+
+    p12 = args.p12
+    H4_threshold = args.H4
+    get_NA_results = args.get_NA_results
+
+    IO_time = 0
+    coloc_time = 0
+
+    if args.CPU:
+        device = torch.device("cpu")
+    else:
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+        elif torch.backends.mps.is_available():
+            device = torch.device("mps")
+        else:
+            device = torch.device("cpu")
+
+    chunk_size = args.chunk_size
+
+    if args.verbose:
+        print(f"using {device} backend")
+        print(f"threads: {torch.get_num_threads()}")
+        print(f"signals in a chunk: {chunk_size}")
+
+    for root, dirs, _ in os.walk(args.dir1):
+        for directory in tqdm(dirs, desc="chromosomes"):
+            try:
+                dir1_path = os.path.join(root, directory)
+                dir1_files = os.listdir(dir1_path)
+
+                dir2_path = os.path.join(args.dir2, directory)
+                dir2_files = os.listdir(dir2_path)
+
+                dir1_cache = {}
+
+                start = time.time()
+
+                for i in range(len(dir1_files)):
+                    pf = pq.ParquetFile(
+                        os.path.join(dir1_path, dir1_files[i]),
+                        thrift_string_size_limit=2**31-1,
+                        thrift_container_size_limit=2**31-1,
+                    )
+
+                    table = pf.read()
+                    dir1_cache[i] = table.to_pandas()
+
+                end = time.time()
+                IO_time += end - start
+
+                for j in tqdm(range(len(dir2_files)), desc="processing outer files", leave=False):
+                    start = time.time()
+
+                    pf = pq.ParquetFile(
+                        os.path.join(dir2_path, dir2_files[j]),
+                        thrift_string_size_limit=2**31-1,
+                        thrift_container_size_limit=2**31-1,
+                    )
+
+                    table = pf.read().to_pandas()
+
+                    end = time.time()
+                    IO_time += end - start
+
+                    metadata2 = table.iloc[:, :6].copy()  
+                    mat2 = table.iloc[:, 6:].copy()
+
+                    del table
+
+                    min_pos_2 = metadata2['location_min'].min()
+                    max_pos_2 = metadata2['location_max'].max()
+
+                    for i in tqdm(range(len(dir1_files)), desc="processing inner files", leave=False):
+                        input1 = dir1_cache[i]
+                        metadata1 = input1.iloc[:, :6].copy()  
+                        mat1 = input1.iloc[:, 6:].copy()
+
+                        min_pos_1 = metadata1['location_min'].min()
+                        max_pos_1 = metadata1['location_max'].max()
+
+                        if max_pos_1 < min_pos_2 or max_pos_2 < min_pos_1:
+                            continue
+
+                        # start = time.time()
+
+                        final_results, n_tests, coloc_time = coloc_loop(
+                            mat1=mat1,
+                            mat2=mat2,
+                            metadata1=metadata1,
+                            metadata2=metadata2,
+                            n_tests=n_tests,
+                            chunk_size=chunk_size,
+                            num_chunks1=math.ceil(mat1.shape[0]/chunk_size),
+                            num_chunks2=math.ceil(mat2.shape[0]/chunk_size),
+                            device=device,
+                            p1=1e-4,
+                            p2=1e-4,
+                            p12=p12,
+                            H4_threshold=H4_threshold,
+                            get_NA_results=get_NA_results,
+                            coloc_time=coloc_time
+                        )
+
+                        # end = time.time()
+                        # coloc_time += end - start
+                        
+                        output_file=args.results
+
+                        if final_results is None or final_results.empty:
+                            continue
+
+                        if not os.path.exists(output_file):
+                            final_results.to_csv(output_file, sep="\t", index=False, mode='w', header=True)
+                        else:
+                            final_results.to_csv(output_file, sep="\t", index=False, mode='a', header=False)
+            except Exception as e:
+                print(f"Error while using files from {dir2_path}: {e}")
+                continue
+
+        dirs.clear()
+
+    if args.verbose:
+        print(f"{n_tests} pairs tested for colocalisation")
+        print(f"IO time: {IO_time}")
+        print(f"coloc time: {coloc_time}")  
+        print(f"Total elapsed time: {time.time() - run_start}")  
+
+if __name__ == "__main__":
+    main()
