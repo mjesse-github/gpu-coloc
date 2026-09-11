@@ -23,7 +23,7 @@ def bf_to_pip(bf_df, device):
         return pd.DataFrame(index=bf_df.index)
 
     arr = torch.tensor(bf_df[cols].to_numpy(dtype=np.float32), device=device)
-    arr = arr.masked_fill(arr <= SENTINEL / 2, float("-inf"))
+    arr = arr.masked_fill(torch.isnan(arr) | (arr <= SENTINEL / 2), float("-inf"))
     pip = torch.nan_to_num(torch.softmax(arr, dim=-1), nan=0.0)
 
     return pd.DataFrame(pip.cpu().numpy(), columns=cols, index=bf_df.index)
@@ -150,6 +150,8 @@ def CLPA_loop(
         summary_df.loc[:, "idx2"] = summary_df["idx2"] + pair[1] * chunk_size
 
         n_tests += summary_df.shape[0]
+
+        summary_df = summary_df[summary_df["CLPA"] > 0]
 
         if summary_df.empty:
             continue
